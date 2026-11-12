@@ -1,0 +1,16 @@
+# Промежуточные артефакты сборки (готовые APK лежат в корне Antigravity Projects/, вне репозитория)
+dist/*-unsigned.apk
+dist/signed/
+dist/.brand/
+*.apk
+*.aab
+__pycache__/
+*.pyc
+*.tmp
+*.aligned.tmp
+
+# Файлы ядра превышают лимит GitHub (100 МБ на файл):
+# лежат внутри APK и в архиве Antigravity-BP-repo.zip релиза
+app/assets/runtime/bin/liblanguage_server.so
+variants/bypass/assets/runtime/bin/liblanguage_server.so
+
