@@ -357,12 +357,12 @@
   var popRaf = 0;
   new MutationObserver(function () {
     if (!popRaf) popRaf = requestAnimationFrame(function () { popRaf = 0; fitPopups(); if (!selLoop) selTick(); });
-  }).observe(document.body, { childList: true, subtree: true });
+  }).observe(document.body || document.documentElement, { childList: true, subtree: true });
 
   var taRaf = 0;
   new MutationObserver(function () {
     if (!taRaf) taRaf = requestAnimationFrame(function () { taRaf = 0; fitTypeahead(); });
-  }).observe(document.body, { childList: true, subtree: true });
+  }).observe(document.body || document.documentElement, { childList: true, subtree: true });
   window.addEventListener("focus", nudgePageSeries);
   window.addEventListener("pageshow", nudgePageSeries);
   document.addEventListener("load", function (e) {
@@ -461,12 +461,13 @@
     // Tabs / complex sheets (Settings, Workspace Drawer, Terminal, Files, History, Artifacts)
     if (sheet.querySelector("[role='tablist'], [role='tab']")) return null;
 
-    // Any sheet that contains form inputs or large content
+    // Any sheet that contains form inputs, brand/custom hosts, or large content
+    if (sheet.querySelector(".agy-brand-host, .agy-customizations-host, select, input[type='range']")) return null;
     if (sheet.querySelector("input:not([type='checkbox']):not([type='radio']),textarea,[contenteditable='true']")) return null;
 
     var txt = (sheet.textContent || "").trim();
     if (txt.length > 220) return null;
-    if (/^(Настройки|Settings|设置|Оформление|Appearance|外观|Субагенты|Subagents|子智能体|Файлы|Files|文件|Терминал|Terminal|终端|История|History|历史|Артефакты|Artifacts|产物|Изменённые|Modified|已修改|账号|Account)/i.test(txt)) return null;
+    if (/^(?:(?:Назад|Back|返回)\s*)?(Настройки|Settings|设置|Оформление|Appearance|外观|Субагенты|Subagents|子智能体|子代理|Файлы|Files|文件|Терминал|Terminal|终端|История|History|历史|Артефакты|Artifacts|产物|Изменённые|Modified|已修改|账号|Account)/i.test(txt)) return null;
 
     var btns = sheet.querySelectorAll("button, [role='menuitem'], [role='option']");
     if (btns.length === 0 || btns.length > 8) return null;
@@ -935,6 +936,8 @@
       }
       text = "Разрешить / Продолжить";
     }
+    window.__agyInsertIntoChat(text, true);
+  };
 
   /* -------------------------------------------------------------------------- */
   /* Subagents Chat Quick Launcher (Release 3.0.9)                              */

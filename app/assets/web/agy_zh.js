@@ -834,7 +834,8 @@
       var sheets = document.querySelectorAll("[data-testid='bottom-sheet'].agy-compact-sheet");
       for (var i = 0; i < sheets.length; i++) {
         var st = (sheets[i].textContent || "").trim();
-        if (/^(设置|外观|子代理|文件|终端|历史|产物|已修改)/.test(st)) {
+        if (sheets[i].querySelector(".agy-brand-host, .agy-customizations-host, select, input[type='range']") ||
+            /^(?:(?:返回|Back|Назад)\s*)?(设置|外观|子智能体|子代理|文件|终端|历史|产物|已修改)/.test(st)) {
           sheets[i].classList.remove("agy-compact-sheet");
         }
       }

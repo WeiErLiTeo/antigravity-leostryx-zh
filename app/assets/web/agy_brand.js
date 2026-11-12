@@ -83,6 +83,21 @@
   }
   var cfg = loadCfg();
 
+  var VALID_LIGHT_PRESETS = { "Default Light": 1, "Catppuccin": 1, "Gruvbox Material": 1, "One Light": 1, "Solarized Light": 1 };
+  var VALID_DARK_PRESETS = { "Default Dark": 1, "Catppuccin": 1, "Dracula": 1, "Gruvbox Material": 1, "Monokai": 1, "One Dark Pro": 1, "Tokyo Night": 1, "Solarized Dark": 1, "Vesper": 1 };
+
+  function sanitizeThemePresets() {
+    var lp = store("theme-preset-light");
+    if (lp && lp !== "Default" && !VALID_LIGHT_PRESETS[lp]) {
+      store("theme-preset-light", "Default Light");
+    }
+    var dp = store("theme-preset-dark");
+    if (dp && dp !== "Default" && !VALID_DARK_PRESETS[dp]) {
+      store("theme-preset-dark", "Default Dark");
+    }
+  }
+  sanitizeThemePresets();
+
   function saveCfg() { store(STORE_KEY, JSON.stringify(cfg)); }
 
   window.__agyGetBrandAccent = function () {
@@ -208,11 +223,16 @@
     return n;
   }
 
+  var _isRendering = false;
   function render(el) {
+    if (!el) return;
+    _isRendering = true;
     try {
       _renderInner(el);
     } catch(err) {
       console.error("agy_brand render error:", err);
+    } finally {
+      _isRendering = false;
     }
   }
   function _renderInner(el) {
@@ -290,9 +310,11 @@
           if (!s) return;
           s.textContent = ok
             ? T("Логотип и иконка рабочего стола обновлены.",
-                "Logo and home-screen icon updated.")
+                "Logo and home-screen icon updated.",
+                "应用内徽标与桌面图标已更新。")
             : T("Логотип обновлён.",
-                "Logo updated.");
+                "Logo updated.",
+                "徽标已更新。");
           s.style.color = "#10b981";
         });
       };
@@ -373,7 +395,7 @@
         render(el);
         var s = document.getElementById("agy-brand-status");
         if (s) {
-          s.textContent = T("Акцентный цвет применён: ", "Accent colour applied: ") + c.hex.toUpperCase();
+          s.textContent = T("Акцентный цвет применён: ", "Accent colour applied: ", "已应用强调色：") + c.hex.toUpperCase();
           s.style.color = "#10b981";
         }
       };
@@ -435,18 +457,18 @@
     )));
 
     var SYNTAX_PRESETS = [
-      { id: "Default Dark", label: "Default Dark (默认深色)", bg: "#101010", fg: "#cccccc", primary: "#007acc", kw: "#569cd6", fn: "#dcdcaa", str: "#ce9178", com: "#6a9955" },
-      { id: "One Dark Pro", label: "One Dark Pro",            bg: "#282c34", fg: "#abb2bf", primary: "#61afef", kw: "#c678dd", fn: "#61afef", str: "#98c379", com: "#5c6370" },
-      { id: "Dracula",      label: "Dracula",                 bg: "#282a36", fg: "#f8f8f2", primary: "#bd93f9", kw: "#ff79c6", fn: "#50fa7b", str: "#f1fa8c", com: "#6272a4" },
-      { id: "Tokyo Night",  label: "Tokyo Night",             bg: "#1a1b26", fg: "#a9b1d6", primary: "#7aa2f7", kw: "#bb9af7", fn: "#7aa2f7", str: "#9ece6a", com: "#565f89" },
-      { id: "Monokai",      label: "Monokai",                 bg: "#272822", fg: "#f8f8f2", primary: "#f92672", kw: "#f92672", fn: "#a6e22e", str: "#e6db74", com: "#75715e" },
-      { id: "Catppuccin",   label: "Catppuccin (Macchiato)",  bg: "#24273a", fg: "#cad3f5", primary: "#c6a0f6", kw: "#c6a0f6", fn: "#8aadf4", str: "#a6da95", com: "#6e738d" },
-      { id: "Solarized Dark", label: "Solarized Dark",        bg: "#002b36", fg: "#93a1a1", primary: "#268bd2", kw: "#859900", fn: "#268bd2", str: "#2aa198", com: "#586e75" },
-      { id: "Default Light", label: "Default Light (默认浅色)", bg: "#f9f9f9", fg: "#101010", primary: "#007acc", kw: "#0000ff", fn: "#795e26", str: "#a31515", com: "#008000" },
-      { id: "One Light",    label: "One Light",               bg: "#f5f5f5", fg: "#383a42", primary: "#4078f2", kw: "#a626a4", fn: "#4078f2", str: "#50a14f", com: "#a0a1a7" }
+      { id: "Default Dark",   mode: "dark",  label: "Default Dark (默认深色)",  bg: "#101010", fg: "#cccccc", primary: "#007acc", kw: "#569cd6", fn: "#dcdcaa", str: "#ce9178", com: "#6a9955" },
+      { id: "One Dark Pro",   mode: "dark",  label: "One Dark Pro",             bg: "#282c34", fg: "#abb2bf", primary: "#61afef", kw: "#c678dd", fn: "#61afef", str: "#98c379", com: "#5c6370" },
+      { id: "Dracula",        mode: "dark",  label: "Dracula",                  bg: "#282a36", fg: "#f8f8f2", primary: "#bd93f9", kw: "#ff79c6", fn: "#50fa7b", str: "#f1fa8c", com: "#6272a4" },
+      { id: "Tokyo Night",    mode: "dark",  label: "Tokyo Night",              bg: "#1a1b26", fg: "#a9b1d6", primary: "#7aa2f7", kw: "#bb9af7", fn: "#7aa2f7", str: "#9ece6a", com: "#565f89" },
+      { id: "Monokai",        mode: "dark",  label: "Monokai",                  bg: "#272822", fg: "#f8f8f2", primary: "#f92672", kw: "#f92672", fn: "#a6e22e", str: "#e6db74", com: "#75715e" },
+      { id: "Catppuccin",     mode: "dark",  label: "Catppuccin (Macchiato)",   bg: "#24273a", fg: "#cad3f5", primary: "#c6a0f6", kw: "#c6a0f6", fn: "#8aadf4", str: "#a6da95", com: "#6e738d" },
+      { id: "Solarized Dark", mode: "dark",  label: "Solarized Dark",           bg: "#002b36", fg: "#93a1a1", primary: "#268bd2", kw: "#859900", fn: "#268bd2", str: "#2aa198", com: "#586e75" },
+      { id: "Default Light",  mode: "light", label: "Default Light (默认浅色)", bg: "#f9f9f9", fg: "#101010", primary: "#007acc", kw: "#0000ff", fn: "#795e26", str: "#a31515", com: "#008000" },
+      { id: "One Light",      mode: "light", label: "One Light",                bg: "#f5f5f5", fg: "#383a42", primary: "#4078f2", kw: "#a626a4", fn: "#4078f2", str: "#50a14f", com: "#a0a1a7" }
     ];
 
-    var curPresetId = localStorage.getItem("theme-preset-dark") || localStorage.getItem("agy_syntax_preset") || "One Dark Pro";
+    var curPresetId = store("agy_syntax_preset") || store("theme-preset-dark") || "One Dark Pro";
     var curPreset = SYNTAX_PRESETS.find(function(p) { return p.id === curPresetId; }) || SYNTAX_PRESETS[1];
 
     var presetSelectWrap = document.createElement("div");
@@ -497,36 +519,36 @@
     sel.onchange = function() {
       var found = SYNTAX_PRESETS.find(function(p) { return p.id === sel.value; });
       if (found) {
-        localStorage.setItem("theme-preset-dark", found.id);
-        localStorage.setItem("theme-preset-light", found.id);
-        localStorage.setItem("agy_syntax_preset", found.id);
+        store("agy_syntax_preset", found.id);
+        if (found.mode === "light" && VALID_LIGHT_PRESETS[found.id]) {
+          store("theme-preset-light", found.id);
+        } else if (found.mode === "dark" && VALID_DARK_PRESETS[found.id]) {
+          store("theme-preset-dark", found.id);
+        }
         updatePreview(found);
       }
     };
 
     el.appendChild(cTheme);
 
-
-    setTimeout(function() {
-      var sl = scaleRow.querySelector("#agy-scale-slider");
-      var slVal = scaleRow.querySelector("#agy-scale-val");
-      var mSl = scaleRow.querySelector("#agy-menu-scale-slider");
-      var mSlVal = scaleRow.querySelector("#agy-menu-scale-val");
-      if (sl) {
-        sl.oninput = function() {
-          slVal.textContent = sl.value + "%";
-          localStorage.setItem("agy_ui_scale", sl.value);
-          if (window.__agyApplyScaling) window.__agyApplyScaling();
-        };
-      }
-      if (mSl) {
-        mSl.oninput = function() {
-          mSlVal.textContent = mSl.value + "%";
-          localStorage.setItem("agy_menu_scale", mSl.value);
-          if (window.__agyApplyScaling) window.__agyApplyScaling();
-        };
-      }
-    }, 50);
+    var sl = scaleRow.querySelector("#agy-scale-slider");
+    var slVal = scaleRow.querySelector("#agy-scale-val");
+    var mSl = scaleRow.querySelector("#agy-menu-scale-slider");
+    var mSlVal = scaleRow.querySelector("#agy-menu-scale-val");
+    if (sl && slVal) {
+      sl.oninput = function() {
+        slVal.textContent = sl.value + "%";
+        store("agy_ui_scale", sl.value);
+        if (window.__agyApplyScaling) window.__agyApplyScaling();
+      };
+    }
+    if (mSl && mSlVal) {
+      mSl.oninput = function() {
+        mSlVal.textContent = mSl.value + "%";
+        store("agy_menu_scale", mSl.value);
+        if (window.__agyApplyScaling) window.__agyApplyScaling();
+      };
+    }
 
     /* ── status ── */
     var st = document.createElement("div");
@@ -534,7 +556,8 @@
     st.style.cssText = "font-size:12.5px;line-height:1.5;color:#999;min-height:18px;padding:0 2px";
     st.textContent = T(
       "Логотип: " + packName(cfg.pack) + " · Цвет: " + cfg.color.toUpperCase(),
-      "Logo: " + packNameEn(cfg.pack) + " · Colour: " + cfg.color.toUpperCase()
+      "Logo: " + packNameEn(cfg.pack) + " · Colour: " + cfg.color.toUpperCase(),
+      "图标：" + packName(cfg.pack) + " · 强调色：" + cfg.color.toUpperCase()
     );
     el.appendChild(st);
   }
@@ -551,11 +574,16 @@
   /* ------------------------------------------------------------- mount */
   window.__agyBrandMount = function (el) {
     if (!el) return;
+    if (el.__brandMounted && el.childElementCount > 0) return;
+    el.__brandMounted = true;
     try {
+      el.setAttribute("data-brand-mounted", "1");
+      el.setAttribute("data-agy-no-translate", "");
       applyColor(cfg.color);
       el.style.cssText = "padding:4px 4px 24px;max-width:620px;box-sizing:border-box";
       render(el);
     } catch (err) {
+      el.__brandMounted = false;
       console.warn("Brand mount error:", err);
     }
   };
@@ -579,14 +607,14 @@
         : "");
   };
 
-  
   /* ------------------------------------------------ MutationObserver Auto-Mount */
   function scanAndMount() {
+    if (_isRendering) return;
     try {
       var hosts = document.querySelectorAll(".agy-brand-host");
       for (var i = 0; i < hosts.length; i++) {
         var host = hosts[i];
-        if (!host.__brandMounted) {
+        if (!host.__brandMounted || host.childElementCount === 0) {
           window.__agyBrandMount(host);
         }
       }
@@ -595,17 +623,37 @@
     }
   }
 
+  function hasUnmountedBrandHost(mutations) {
+    for (var i = 0; i < mutations.length; i++) {
+      var m = mutations[i];
+      if (m.target && m.target.closest && m.target.closest(".agy-brand-host")) continue;
+      var added = m.addedNodes;
+      for (var j = 0; j < added.length; j++) {
+        var n = added[j];
+        if (!n || n.nodeType !== 1) continue;
+        if ((n.classList && n.classList.contains("agy-brand-host")) ||
+            (n.querySelector && n.querySelector(".agy-brand-host"))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   if (typeof window !== "undefined" && window.MutationObserver) {
     try {
       var _brandObserver = new MutationObserver(function(mutations) {
-        scanAndMount();
+        if (_isRendering) return;
+        if (hasUnmountedBrandHost(mutations)) {
+          scanAndMount();
+        }
       });
       var targetNode = document.body || document.documentElement;
       if (targetNode) {
         _brandObserver.observe(targetNode, { childList: true, subtree: true });
       } else {
         document.addEventListener("DOMContentLoaded", function() {
-          _brandObserver.observe(document.body, { childList: true, subtree: true });
+          if (document.body) _brandObserver.observe(document.body, { childList: true, subtree: true });
         });
       }
     } catch (e) {

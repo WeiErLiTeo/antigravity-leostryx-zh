@@ -137,33 +137,50 @@
     return null;
   }
 
+  var syncingBars = false;
+  var lastRootHex = null;
+  var lastRootScheme = null;
+
   function syncNativeBars(forceTheme) {
-    var t = (forceTheme === 'light' || forceTheme === 'dark') ? forceTheme : (detectThemeFromBody() || lastTheme || 'dark');
-    lastTheme = t;
-    var isDark = (t !== 'light');
-    var rgb = detectSurfaceRgb(isDark);
-    var hex = rgbToHex(rgb);
-
-    var root = document.documentElement;
-    if (root) {
-      root.style.colorScheme = isDark ? 'dark' : 'light';
-      root.style.backgroundColor = hex;
-    }
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', hex);
-
-    var packedInt = rgbToSignedArgb(rgb, isDark);
-    var payload = String(packedInt);
-    if (payload === lastSentPayload) return;
-    lastSentPayload = payload;
-
+    if (syncingBars) return;
+    syncingBars = true;
     try {
-      if (rawOnVisualThemeChanged) {
-        rawOnVisualThemeChanged(payload);
-      } else if (window.Android && typeof window.Android.onVisualThemeChanged === 'function') {
-        window.Android.onVisualThemeChanged(payload);
+      var t = (forceTheme === 'light' || forceTheme === 'dark') ? forceTheme : (detectThemeFromBody() || lastTheme || 'dark');
+      lastTheme = t;
+      var isDark = (t !== 'light');
+      var rgb = detectSurfaceRgb(isDark);
+      var hex = rgbToHex(rgb);
+      var scheme = isDark ? 'dark' : 'light';
+
+      var root = document.documentElement;
+      if (root) {
+        if (lastRootScheme !== scheme) {
+          root.style.colorScheme = scheme;
+          lastRootScheme = scheme;
+        }
+        if (lastRootHex !== hex) {
+          root.style.backgroundColor = hex;
+          lastRootHex = hex;
+        }
       }
-    } catch (e) {}
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta && meta.getAttribute('content') !== hex) meta.setAttribute('content', hex);
+
+      var packedInt = rgbToSignedArgb(rgb, isDark);
+      var payload = String(packedInt);
+      if (payload === lastSentPayload) return;
+      lastSentPayload = payload;
+
+      try {
+        if (rawOnVisualThemeChanged) {
+          rawOnVisualThemeChanged(payload);
+        } else if (window.Android && typeof window.Android.onVisualThemeChanged === 'function') {
+          window.Android.onVisualThemeChanged(payload);
+        }
+      } catch (e) {}
+    } finally {
+      syncingBars = false;
+    }
   }
 
   // Override window.Android.onVisualThemeChanged if possible so external calls with "dark"/"light" also send packed int
@@ -183,6 +200,7 @@
 
   var syncTimer = 0;
   function scheduleSync() {
+    if (syncingBars) return;
     if (syncTimer) clearTimeout(syncTimer);
     syncTimer = setTimeout(function () {
       syncTimer = 0;
@@ -199,13 +217,13 @@
     var obs = new MutationObserver(scheduleSync);
     obs.observe(document.body, {
       attributes: true,
-      attributeFilter: ['class', 'style', 'data-theme'],
+      attributeFilter: ['class', 'data-theme'],
       childList: true
     });
     if (document.documentElement) {
       obs.observe(document.documentElement, {
         attributes: true,
-        attributeFilter: ['class', 'style', 'data-theme']
+        attributeFilter: ['class', 'data-theme']
       });
     }
     try {
