@@ -26,6 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "tools"))
 import brand  # noqa: E402  (Leostryx icon pack + display name overlay)
+import compile_java  # noqa: E402  (Compiles src/ Java tree -> classes.dex & classes3.dex)
 APP = ROOT / "app"
 MAP = json.loads((ROOT / "compress-map.json").read_text(encoding="utf-8"))
 BYPASS = {
@@ -161,6 +162,7 @@ def main():
     if not jobs:
         print("usage: python3 rebuild.py [standard|bypass|both]")
         return 2
+    compile_java.build(ROOT)
     # Leostryx branding: icon pack + display name, driven by
     # app/assets/web/brand/config.json. Sits on top of the variant delta so a
     # bypass build is branded the same way as standard.

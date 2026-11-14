@@ -2802,7 +2802,7 @@ manifest = {
     "created": ts,
     "files": count,
     "items": sorted(items),
-    "app_version": "3.2.1",
+    "app_version": "3.2.2",
 }
 z.writestr("manifest.json", json.dumps(manifest, indent=2))
 z.close()

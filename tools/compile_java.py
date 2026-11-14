@@ -1,73 +1,17 @@
 #!/usr/bin/env python3
-"""Incremental Java -> classes.dex compiler for Leostryx/src."""
-import hashlib
+"""Compiles Leostryx/src Java sources directly into app/classes.dex and app/classes3.dex."""
 import shutil
-import struct
 import subprocess
 import tempfile
-import zlib
 from pathlib import Path
 
 ANDROID_JAR = Path("/opt/android/sdk/platforms/android-36/android.jar")
 D8_BIN = Path("/opt/android/sdk/build-tools/36.0.0/d8")
 
-
-def _strip_classes_from_dex(dex_bytes: bytes, descriptors_to_strip: set, outer_prefixes: set) -> bytes:
-    dex = bytearray(dex_bytes)
-    map_off = struct.unpack_from("<I", dex, 52)[0]
-    class_defs_size, class_defs_off = struct.unpack_from("<II", dex, 96)
-    _, type_ids_off = struct.unpack_from("<II", dex, 64)
-    _, string_ids_off = struct.unpack_from("<II", dex, 56)
-
-    def get_string(idx: int) -> str:
-        str_data_off = struct.unpack_from("<I", dex, string_ids_off + idx * 4)[0]
-        pos = str_data_off
-        while dex[pos] & 0x80:
-            pos += 1
-        pos += 1
-        end = dex.find(b"\x00", pos)
-        return dex[pos:end].decode("utf-8", errors="ignore")
-
-    def get_type_desc(type_idx: int) -> str:
-        str_idx = struct.unpack_from("<I", dex, type_ids_off + type_idx * 4)[0]
-        return get_string(str_idx)
-
-    def should_strip(desc: str) -> bool:
-        if desc in descriptors_to_strip:
-            return True
-        for pref in outer_prefixes:
-            if desc.startswith(pref):
-                return True
-        return False
-
-    kept = bytearray()
-    removed = 0
-    for i in range(class_defs_size):
-        off = class_defs_off + i * 32
-        class_idx = struct.unpack_from("<I", dex, off)[0]
-        if should_strip(get_type_desc(class_idx)):
-            removed += 1
-        else:
-            kept.extend(dex[off : off + 32])
-
-    if removed == 0:
-        return dex_bytes
-
-    total_bytes = class_defs_size * 32
-    dex[class_defs_off : class_defs_off + total_bytes] = kept + (b"\x00" * (removed * 32))
-    new_count = class_defs_size - removed
-    struct.pack_into("<I", dex, 96, new_count)
-
-    map_size = struct.unpack_from("<I", dex, map_off)[0]
-    for i in range(map_size):
-        entry_off = map_off + 4 + i * 12
-        item_type = struct.unpack_from("<H", dex, entry_off)[0]
-        if item_type == 0x0006:
-            struct.pack_into("<I", dex, entry_off + 4, new_count)
-
-    dex[12:32] = hashlib.sha1(dex[32:]).digest()
-    struct.pack_into("<I", dex, 8, zlib.adler32(dex[12:]) & 0xFFFFFFFF)
-    return bytes(dex)
+CLASSES3_REL_PATHS = {
+    "com/agy/ru/AgyEffort.class",
+    "com/agy/ru/AgyMediaChooser.class",
+}
 
 
 def build(root: Path) -> None:
@@ -79,9 +23,8 @@ def build(root: Path) -> None:
         return
 
     javac_bin = shutil.which("javac") or "/usr/bin/javac"
-    dex_path = root / "app/classes.dex"
-    if not dex_path.exists():
-        return
+    dex1_path = root / "app/classes.dex"
+    dex3_path = root / "app/classes3.dex"
 
     stubs_dir = root / "src_stubs"
     stub_files = sorted(stubs_dir.rglob("*.java")) if stubs_dir.is_dir() else []
@@ -89,9 +32,9 @@ def build(root: Path) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         cp_entries = [str(ANDROID_JAR)]
+        stubs_out = tmp_path / "stubs"
 
         if stub_files:
-            stubs_out = tmp_path / "stubs"
             stubs_out.mkdir(parents=True, exist_ok=True)
             subprocess.check_call([
                 javac_bin,
@@ -119,32 +62,47 @@ def build(root: Path) -> None:
             *[str(p) for p in java_files],
         ])
 
-        compiled_classes = sorted(classes_out.rglob("*.class"))
-        descriptors = set()
-        outer_prefixes = set()
-        for cls_file in compiled_classes:
-            rel = cls_file.relative_to(classes_out).with_suffix("").as_posix()
-            descriptors.add(f"L{rel};")
-            if "$" not in rel:
-                outer_prefixes.add(f"L{rel}$")
+        all_classes = sorted(classes_out.rglob("*.class"))
+        c1_files = []
+        c3_files = []
+        for cls_file in all_classes:
+            rel = cls_file.relative_to(classes_out).as_posix()
+            if rel in CLASSES3_REL_PATHS:
+                c3_files.append(cls_file)
+            else:
+                c1_files.append(cls_file)
 
-        stripped_dex = tmp_path / "stripped.dex"
-        stripped_dex.write_bytes(
-            _strip_classes_from_dex(dex_path.read_bytes(), descriptors, outer_prefixes)
-        )
+        if c1_files:
+            d1_out = tmp_path / "d8_c1"
+            d1_out.mkdir(parents=True, exist_ok=True)
+            d1_cmd = [
+                str(D8_BIN),
+                "--min-api", "24",
+                "--lib", str(ANDROID_JAR),
+                "--output", str(d1_out),
+            ]
+            if stub_files:
+                d1_cmd.extend(["--classpath", str(stubs_out)])
+            d1_cmd.extend(str(c) for c in c1_files)
+            subprocess.check_call(d1_cmd)
+            built_dex1 = d1_out / "classes.dex"
+            if built_dex1.exists():
+                shutil.copy2(built_dex1, dex1_path)
+                print(f"compiled java -> app/classes.dex ({len(c1_files)} classes)")
 
-        d8_out = tmp_path / "d8_out"
-        d8_out.mkdir(parents=True, exist_ok=True)
-        subprocess.check_call([
-            str(D8_BIN),
-            "--min-api", "24",
-            "--lib", str(ANDROID_JAR),
-            "--output", str(d8_out),
-            str(stripped_dex),
-            *[str(c) for c in compiled_classes],
-        ])
-
-        merged_dex = d8_out / "classes.dex"
-        if merged_dex.exists():
-            shutil.copy2(merged_dex, dex_path)
-            print("compiled java -> classes.dex:", [p.name for p in java_files])
+        if c3_files:
+            d3_out = tmp_path / "d8_c3"
+            d3_out.mkdir(parents=True, exist_ok=True)
+            d3_cmd = [
+                str(D8_BIN),
+                "--min-api", "24",
+                "--lib", str(ANDROID_JAR),
+                "--classpath", str(classes_out),
+                "--output", str(d3_out),
+                *[str(c) for c in c3_files],
+            ]
+            subprocess.check_call(d3_cmd)
+            built_dex3 = d3_out / "classes.dex"
+            if built_dex3.exists():
+                shutil.copy2(built_dex3, dex3_path)
+                print(f"compiled java -> app/classes3.dex ({len(c3_files)} classes)")

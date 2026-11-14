@@ -1177,7 +1177,7 @@
     appName.textContent = "Antigravity";
     var appVer = document.createElement("div");
     appVer.style.cssText = "font-size:12px;color:#888;margin-top:2px";
-    appVer.textContent = "3.2.1";
+    appVer.textContent = "3.2.2";
     appInfo.appendChild(appName);
     appInfo.appendChild(appVer);
     appRow.appendChild(appInfo);
@@ -1289,7 +1289,7 @@
     btnUpd.textContent = T("Проверить обновления", "Check for updates");
     c3.appendChild(btnUpd);
 
-    var CURRENT_VERSION = "3.2.1";
+    var CURRENT_VERSION = "3.2.2";
     var downloadedApkPath = "/storage/emulated/0/Download/update-temp.apk";
     var pendingApkUrl = null;
     var updState = "check"; // "check" | "available" | "downloading" | "ready"
