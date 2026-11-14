@@ -1,7 +1,7 @@
-/* Leostryx — Settings › Appearance › Кастомизация (Leostryx branding).
+/* Antigravity — Settings › Appearance › Customization (Antigravity branding).
  * Renders into the Appearance screen (main.js `eLb` calls
  * window.__agyBrandMount(el)). Two controls:
- *   1. Logo pack picker — 4 packs (Owl, Lynx, LSX, Angular X), default 02_lynx.
+ *   1. Logo pack picker — 5 packs (Original Antigravity, Owl, Lynx, LSX, Angular X), default 02_lynx.
  *      Swaps the in-app header logo, login-screen logo, splash logo, and
  *      Android home-screen launcher icon immediately without rebuilding the APK.
  *   2. Accent colour table — sets --primary / --primary-foreground live with
@@ -13,19 +13,15 @@
 
   var STORE_KEY = "agyBrandConfig";
 
-  function getLang() {
-    try {
-      if (window.__agyI18n && window.__agyI18n.getLanguage) return window.__agyI18n.getLanguage();
-      if (window.AgyLang && window.AgyLang.getLang) return window.AgyLang.getLang();
-    } catch (e) {}
-    var nav = (navigator.language || "").toLowerCase();
-    return nav.indexOf("zh") === 0 ? "zh" : nav.indexOf("ru") === 0 ? "ru" : "en";
+  function lang() {
+    try { return window.__agyI18n ? window.__agyI18n.getLanguage() : "en"; }
+    catch (e) { return "en"; }
   }
-  function T(r, e, z) {
-    var l = getLang();
-    if (l === "zh") return z !== undefined ? z : (e || r);
+  function T(r, e) {
+    var l = lang();
     if (l === "ru") return r;
-    return e || r;
+    if (l === "zh" && window.__agyZhTranslate) return window.__agyZhTranslate(r) || window.__agyZhTranslate(e) || e;
+    return e;
   }
 
   function store(k, v) {
@@ -39,34 +35,166 @@
 
   /* ------------------------------------------------------------- catalog */
   var PACKS = [
-    { id: "00_original",  ru: "Antigravity (оригинал)", en: "Antigravity", zh: "Antigravity 原版" },
-    { id: "01_owl",       ru: "Сова",           en: "Owl",          zh: "猫头鹰 (Owl)" },
-    { id: "02_lynx",      ru: "Рысь",           en: "Lynx",         zh: "猞猁 (Lynx)" },
-    { id: "03_lsx",       ru: "Монограмма LSX", en: "LSX monogram", zh: "LSX 字母印章" },
-    { id: "04_angular_x", ru: "Угловой X",      en: "Angular X",    zh: "锋芒 X (Angular X)" }
+    { id: "00_original",  ru: "Оригинал Antigravity", en: "Original Antigravity" },
+    { id: "01_owl",       ru: "Сова",                 en: "Owl" },
+    { id: "02_lynx",      ru: "Рысь",                 en: "Lynx" },
+    { id: "03_lsx",       ru: "Монограмма LSX",       en: "LSX monogram" },
+    { id: "04_angular_x", ru: "Угловой X",            en: "Angular X" }
   ];
   var DEFAULT_PACK = "02_lynx";
 
   var COLORS = [
-    { hex: "#0b84ff", ru: "Синий",      en: "Blue",    zh: "宝石蓝" },
-    { hex: "#3b82f6", ru: "Индиго",     en: "Indigo",  zh: "靛蓝" },
-    { hex: "#8b5cf6", ru: "Фиолетовый", en: "Violet",  zh: "罗兰紫" },
-    { hex: "#ec4899", ru: "Розовый",    en: "Pink",    zh: "樱桃粉" },
-    { hex: "#ef4444", ru: "Красный",    en: "Red",     zh: "中国红" },
-    { hex: "#f97316", ru: "Оранжевый",  en: "Orange",  zh: "活力橙" },
-    { hex: "#f59e0b", ru: "Янтарный",   en: "Amber",   zh: "琥珀黄" },
-    { hex: "#10b981", ru: "Изумрудный", en: "Emerald", zh: "翡翠绿" },
-    { hex: "#14b8a6", ru: "Бирюзовый",  en: "Teal",    zh: "青碧绿" },
-    { hex: "#64748b", ru: "Серый",      en: "Slate",   zh: "高级灰" },
-    { hex: "#0ea5e9", ru: "Небесный",   en: "Sky",     zh: "晴空蓝" },
-    { hex: "#a3e635", ru: "Лаймовый",   en: "Lime",    zh: "青柠绿" }
+    { hex: "#0b84ff", ru: "Синий",      en: "Blue" },
+    { hex: "#3b82f6", ru: "Индиго",     en: "Indigo" },
+    { hex: "#8b5cf6", ru: "Фиолетовый", en: "Violet" },
+    { hex: "#ec4899", ru: "Розовый",    en: "Pink" },
+    { hex: "#ef4444", ru: "Красный",    en: "Red" },
+    { hex: "#f97316", ru: "Оранжевый",  en: "Orange" },
+    { hex: "#f59e0b", ru: "Янтарный",   en: "Amber" },
+    { hex: "#10b981", ru: "Изумрудный", en: "Emerald" },
+    { hex: "#14b8a6", ru: "Бирюзовый",  en: "Teal" },
+    { hex: "#64748b", ru: "Серый",      en: "Slate" },
+    { hex: "#0ea5e9", ru: "Небесный",   en: "Sky" },
+    { hex: "#a3e635", ru: "Лаймовый",   en: "Lime" }
   ];
   var DEFAULT_COLOR = "#0b84ff";
+
+  var FONTS = [
+    {
+      id: "system",
+      ru: "Системный (По умолчанию)",
+      en: "System (Default)",
+      desc: "Roboto / MiSans / UI",
+      family: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'MiSans', sans-serif",
+      license: "System",
+      isMono: false
+    },
+    {
+      id: "inter",
+      ru: "Inter",
+      en: "Inter",
+      desc: "Современный UI-гротеск",
+      family: "'Inter', system-ui, -apple-system, sans-serif",
+      license: "SIL OFL 1.1",
+      isMono: false
+    },
+    {
+      id: "jetbrains_mono",
+      ru: "JetBrains Mono",
+      en: "JetBrains Mono",
+      desc: "Шрифт разработчиков",
+      family: "'JetBrains Mono', ui-monospace, monospace",
+      license: "SIL OFL 1.1",
+      isMono: true
+    },
+    {
+      id: "fira_code",
+      ru: "Fira Code",
+      en: "Fira Code",
+      desc: "Моноширинный с лигатурами",
+      family: "'Fira Code', ui-monospace, monospace",
+      license: "SIL OFL 1.1",
+      isMono: true
+    },
+    {
+      id: "roboto",
+      ru: "Roboto",
+      en: "Roboto",
+      desc: "Классический Android",
+      family: "'Roboto', 'RobotoFlex', sans-serif",
+      license: "Apache 2.0",
+      isMono: false
+    },
+    {
+      id: "geist",
+      ru: "Geist",
+      en: "Geist",
+      desc: "Чистый технический",
+      family: "'Geist', sans-serif",
+      license: "SIL OFL 1.1",
+      isMono: false
+    },
+    {
+      id: "montserrat",
+      ru: "Montserrat",
+      en: "Montserrat",
+      desc: "Геометрический гротеск",
+      family: "'Montserrat', sans-serif",
+      license: "SIL OFL 1.1",
+      isMono: false
+    },
+    {
+      id: "ubuntu",
+      ru: "Ubuntu",
+      en: "Ubuntu",
+      desc: "Гуманистический гротеск",
+      family: "'Ubuntu', sans-serif",
+      license: "Ubuntu Font Licence",
+      isMono: false
+    },
+    {
+      id: "pt_root_ui",
+      ru: "PT Root UI",
+      en: "PT Root UI",
+      desc: "Создан для кириллицы",
+      family: "'PT Root UI', 'PT Sans', sans-serif",
+      license: "SIL OFL 1.1",
+      isMono: false
+    }
+  ];
+  var DEFAULT_FONT = "system";
+
+  var POPUP_STYLES = [
+    {
+      id: "frosted",
+      ruTitle: "Матовое стекло",
+      enTitle: "Frosted glass",
+      ruDesc: "Размытие фона (по умолчанию)",
+      enDesc: "Blurred backdrop (default)"
+    },
+    {
+      id: "solid",
+      ruTitle: "Сплошной (экономия заряда)",
+      enTitle: "Solid (power saving)",
+      ruDesc: "Без размытия и прозрачности",
+      enDesc: "No blur or transparency"
+    }
+  ];
+
+  function normPopupStyle(val) {
+    return val === "solid" ? "solid" : "frosted";
+  }
+  function getPopupStyle() {
+    try {
+      if (typeof window.__agyGetPopupStyle === "function") return normPopupStyle(window.__agyGetPopupStyle());
+      return normPopupStyle(store("agyPopupStyle"));
+    } catch (e) {
+      return "frosted";
+    }
+  }
+  function setPopupStyle(val) {
+    var next = normPopupStyle(val);
+    try {
+      if (typeof window.__agySetPopupStyle === "function") {
+        next = window.__agySetPopupStyle(next);
+      } else {
+        store("agyPopupStyle", next);
+        if (document.documentElement) document.documentElement.setAttribute("data-agy-popup-style", next);
+        if (typeof window.__agyUpdateGlassTheme === "function") window.__agyUpdateGlassTheme(true);
+      }
+    } catch (e) {}
+    return next;
+  }
+  function popupStyleName(id) {
+    var p = POPUP_STYLES.filter(function (x) { return x.id === id; })[0] || POPUP_STYLES[0];
+    return T(p.ruTitle, p.enTitle);
+  }
 
   /* -------------------------------------------------------------- state */
   function loadCfg() {
     var raw = store(STORE_KEY);
-    var cfg = { pack: DEFAULT_PACK, color: DEFAULT_COLOR, recolorLogo: false };
+    var savedFont = store("agyFontFamily");
+    var cfg = { pack: DEFAULT_PACK, color: DEFAULT_COLOR, recolorLogo: false, font: savedFont || DEFAULT_FONT };
     if (raw) {
       try {
         var p = JSON.parse(raw);
@@ -74,35 +202,66 @@
           if (p.pack) cfg.pack = p.pack;
           if (p.color) cfg.color = p.color;
           if (p.recolorLogo !== undefined) cfg.recolorLogo = !!p.recolorLogo;
+          if (p.font) cfg.font = p.font;
         }
       } catch (e) {}
     }
+    if (savedFont && FONTS.some(function (f) { return f.id === savedFont; })) cfg.font = savedFont;
     if (!PACKS.some(function (p) { return p.id === cfg.pack; })) cfg.pack = DEFAULT_PACK;
     if (!COLORS.some(function (c) { return c.hex.toLowerCase() === String(cfg.color).toLowerCase(); })) cfg.color = DEFAULT_COLOR;
+    if (!FONTS.some(function (f) { return f.id === cfg.font; })) cfg.font = DEFAULT_FONT;
     return cfg;
   }
   var cfg = loadCfg();
 
-  var VALID_LIGHT_PRESETS = { "Default Light": 1, "Catppuccin": 1, "Gruvbox Material": 1, "One Light": 1, "Solarized Light": 1 };
-  var VALID_DARK_PRESETS = { "Default Dark": 1, "Catppuccin": 1, "Dracula": 1, "Gruvbox Material": 1, "Monokai": 1, "One Dark Pro": 1, "Tokyo Night": 1, "Solarized Dark": 1, "Vesper": 1 };
-
-  function sanitizeThemePresets() {
-    var lp = store("theme-preset-light");
-    if (lp && lp !== "Default" && !VALID_LIGHT_PRESETS[lp]) {
-      store("theme-preset-light", "Default Light");
-    }
-    var dp = store("theme-preset-dark");
-    if (dp && dp !== "Default" && !VALID_DARK_PRESETS[dp]) {
-      store("theme-preset-dark", "Default Dark");
-    }
+  function saveCfg() {
+    store(STORE_KEY, JSON.stringify(cfg));
+    store("agyFontFamily", cfg.font);
   }
-  sanitizeThemePresets();
-
-  function saveCfg() { store(STORE_KEY, JSON.stringify(cfg)); }
 
   window.__agyGetBrandAccent = function () {
     return cfg && cfg.color ? cfg.color : DEFAULT_COLOR;
   };
+
+  /* -------------------------------------------------------- font apply */
+  function applyFont(fontId) {
+    var f = FONTS.filter(function (x) { return x.id === fontId; })[0] || FONTS[0];
+    var root = document.documentElement;
+    var body = document.body;
+    if (!root) return;
+    var styleEl = document.getElementById("agy-font-override-css");
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.id = "agy-font-override-css";
+      (document.head || root).appendChild(styleEl);
+    }
+    if (f.id === "system") {
+      styleEl.textContent = "";
+      root.style.removeProperty("--default-font-family");
+      root.style.removeProperty("--font-sans");
+      root.style.removeProperty("--vscode-font-family");
+      if (body) body.style.removeProperty("font-family");
+    } else {
+      var cssRule =
+        ":root, html, body, button, input, select, textarea, .font-sans {\n" +
+        "  --default-font-family: " + f.family + " !important;\n" +
+        "  --font-sans: " + f.family + " !important;\n" +
+        "  --vscode-font-family: " + f.family + " !important;\n" +
+        "  font-family: " + f.family + " !important;\n" +
+        "}\n";
+      if (f.isMono) {
+        cssRule +=
+          "code, pre, .font-mono {\n" +
+          "  --default-mono-font-family: " + f.family + " !important;\n" +
+          "  --font-mono: " + f.family + " !important;\n" +
+          "  --editor-font-family: " + f.family + " !important;\n" +
+          "  font-family: " + f.family + " !important;\n" +
+          "}\n";
+      }
+      styleEl.textContent = cssRule;
+    }
+  }
+  window.__agyApplyFont = applyFont;
 
   /* ------------------------------------------------------- colour apply */
   function hexToRgb(hex) {
@@ -223,34 +382,21 @@
     return n;
   }
 
-  var _isRendering = false;
   function render(el) {
-    if (!el) return;
-    _isRendering = true;
-    try {
-      _renderInner(el);
-    } catch(err) {
-      console.error("agy_brand render error:", err);
-    } finally {
-      _isRendering = false;
-    }
-  }
-  function _renderInner(el) {
     el.innerHTML = "";
 
     /* ── header ── */
     var header = document.createElement("div");
     header.style.cssText = "font-size:18px;font-weight:600;color:var(--foreground,#eee);margin-bottom:12px";
-    header.textContent = T("Кастомизация", "Customization", "个性化定制与外观");
+    header.textContent = T("Кастомизация", "Customization");
     el.appendChild(header);
 
     /* ── Card 1: logo pack ── */
     var c1 = makeCard();
-    c1.appendChild(makeTitle(T("Логотип", "Logo", "应用图标与品牌 Logo")));
+    c1.appendChild(makeTitle(T("Логотип", "Logo")));
     c1.appendChild(makeNote(T(
-      "Сова, рысь, монограмма LSX или угловой X. Сразу меняет логотип в шапке, на экране входа, сплэш-скрине и иконку приложения на рабочем столе.",
-      "Owl, lynx, LSX monogram or angular X. Immediately updates the header logo, login screen, splash screen and home-screen app icon.",
-      "提供猫头鹰、猞猁、LSX 印章或锋芒 X 4套定制图标包。即时更换顶部栏 Logo、登录页 Logo、启动页及桌面应用图标。"
+      "Оригинал Antigravity, сова, рысь, монограмма LSX или угловой X. Сразу меняет логотип в шапке, на экране входа, сплэш-скрине и иконку приложения на рабочем столе.",
+      "Original Antigravity, owl, lynx, LSX monogram or angular X. Immediately updates the header logo, login screen, splash screen and home-screen app icon."
     )));
 
     var grid = document.createElement("div");
@@ -282,7 +428,7 @@
 
       var lbl = document.createElement("div");
       lbl.style.cssText = "font-size:12.5px;line-height:1.3;color:var(--foreground,#ddd)";
-      lbl.textContent = T(p.ru, p.en, p.zh);
+      lbl.textContent = T(p.ru, p.en);
       cell.appendChild(lbl);
 
       if (selected) {
@@ -310,11 +456,9 @@
           if (!s) return;
           s.textContent = ok
             ? T("Логотип и иконка рабочего стола обновлены.",
-                "Logo and home-screen icon updated.",
-                "应用内徽标与桌面图标已更新。")
+                "Logo and home-screen icon updated.")
             : T("Логотип обновлён.",
-                "Logo updated.",
-                "徽标已更新。");
+                "Logo updated.");
           s.style.color = "#10b981";
         });
       };
@@ -325,11 +469,10 @@
 
     /* ── Card 2: accent colour ── */
     var c2 = makeCard();
-    c2.appendChild(makeTitle(T("Цвет интерфейса и кнопок", "UI and button colour", "界面与按钮强调色")));
+    c2.appendChild(makeTitle(T("Цвет интерфейса и кнопок", "UI and button colour")));
     c2.appendChild(makeNote(T(
       "Акцентный цвет: задаёт тон кнопок, активных элементов и интерфейсных акцентов.",
-      "Accent colour: sets the tint for buttons, active controls and UI accents.",
-      "自选全局强调色：即时定制主按钮、激活指示器、光标及界面交互高亮色。"
+      "Accent colour: sets the tint for buttons, active controls and UI accents."
     )));
 
     /* Switch: Recolor logos & icons */
@@ -341,13 +484,12 @@
     toggleInfo.style.cssText = "display:flex;flex-direction:column;gap:2px";
     var toggleTitle = document.createElement("div");
     toggleTitle.style.cssText = "font-size:13.5px;font-weight:600;color:var(--foreground,#eee)";
-    toggleTitle.textContent = T("Перекрашивать логотипы и значки", "Recolor logos and icons", "将图标重绘为强调色");
+    toggleTitle.textContent = T("Перекрашивать логотипы и значки", "Recolor logos and icons");
     var toggleDesc = document.createElement("div");
     toggleDesc.style.cssText = "font-size:11.5px;color:#999;line-height:1.35";
     toggleDesc.textContent = T(
-      "Если выключено — все 4 логотипа и значки сохраняют оригинальные авторские цвета (как на рабочем столе)",
-      "When off — all 4 logos and icons retain original designer colors (matching the launcher icon)",
-      "开启后图标与 Logo 同步跟随强调色；关闭则保留俄语原作者设计的独立经典配色。"
+      "Если выключено — все 5 логотипов и значки сохраняют оригинальные авторские цвета (как на рабочем столе)",
+      "When off — all 5 logos and icons retain original designer colors (matching the launcher icon)"
     );
     toggleInfo.appendChild(toggleTitle);
     toggleInfo.appendChild(toggleDesc);
@@ -376,8 +518,8 @@
       var selected = cfg.color.toLowerCase() === c.hex.toLowerCase();
       var b = document.createElement("button");
       b.type = "button";
-      b.title = T(c.ru, c.en, c.zh) + " " + c.hex;
-      b.setAttribute("aria-label", T(c.ru, c.en, c.zh));
+      b.title = T(c.ru, c.en) + " " + c.hex;
+      b.setAttribute("aria-label", T(c.ru, c.en));
       b.style.cssText = "position:relative;width:100%;aspect-ratio:1;border-radius:12px;cursor:pointer;" +
         "border:2px solid " + (selected ? "var(--foreground,#eee)" : "transparent") + ";" +
         "background:" + c.hex + ";padding:0;transition:transform .12s";
@@ -395,7 +537,7 @@
         render(el);
         var s = document.getElementById("agy-brand-status");
         if (s) {
-          s.textContent = T("Акцентный цвет применён: ", "Accent colour applied: ", "已应用强调色：") + c.hex.toUpperCase();
+          s.textContent = T("Акцентный цвет применён: ", "Accent colour applied: ") + c.hex.toUpperCase();
           s.style.color = "#10b981";
         }
       };
@@ -417,154 +559,241 @@
     c2.appendChild(cur);
     el.appendChild(c2);
 
-    
-    /* ── UI Scaling (DPI) & Model Menu Sizing Controls ── */
-    var cScale = document.createElement("div");
-    cScale.style.cssText = "margin-bottom:18px";
-    var cScaleHead = document.createElement("div");
-    cScaleHead.style.cssText = "font-size:13px;font-weight:600;margin-bottom:6px;color:var(--foreground,#f1f5f9)";
-    cScaleHead.textContent = T("Масштаб интерфейса и меню", "UI Scaling & Menu Size", "界面缩放与菜单大小 (DPI)");
-    cScale.appendChild(cScaleHead);
-
-    var curScale = localStorage.getItem("agy_ui_scale") || "100";
-    var curMenuScale = localStorage.getItem("agy_menu_scale") || "100";
-
-    var scaleRow = document.createElement("div");
-    scaleRow.style.cssText = "display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:10px;background:var(--muted,rgba(255,255,255,0.04));border:1px solid var(--border,rgba(255,255,255,0.08))";
-
-    scaleRow.innerHTML = 
-      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
-      '  <span style="font-size:12.5px;color:var(--foreground,#f1f5f9);font-weight:500;">' + T("Общий масштаб интерфейса", "Global UI Scale", "全局界面缩放 (DPI)") + '</span>' +
-      '  <span id="agy-scale-val" style="font-size:12px;font-family:monospace;color:var(--primary,#38bdf8);font-weight:600;">' + curScale + '%</span>' +
-      '</div>' +
-      '<input type="range" id="agy-scale-slider" min="85" max="140" step="5" value="' + curScale + '" style="width:100%;accent-color:var(--primary,#38bdf8);cursor:pointer;" />' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">' +
-      '  <span style="font-size:12.5px;color:var(--foreground,#f1f5f9);font-weight:500;">' + T("Размер меню выбора модели", "Model Menu Font & Spacing", "模型选择弹窗字体与间距") + '</span>' +
-      '  <span id="agy-menu-scale-val" style="font-size:12px;font-family:monospace;color:var(--primary,#38bdf8);font-weight:600;">' + curMenuScale + '%</span>' +
-      '</div>' +
-      '<input type="range" id="agy-menu-scale-slider" min="90" max="150" step="5" value="' + curMenuScale + '" style="width:100%;accent-color:var(--primary,#38bdf8);cursor:pointer;" />';
-
-    cScale.appendChild(scaleRow);
-    el.appendChild(cScale);
-
-    /* ── Card 4: Code Syntax Themes & Live Preview (Task 4) ── */
-    var cTheme = makeCard();
-    cTheme.appendChild(makeTitle(T("Тема подсветки синтаксиса", "Code Syntax Theme", "代码高亮主题与实时预览")));
-    cTheme.appendChild(makeNote(T(
-      "Выберите цветовую схему для блоков кода и редактора. Ниже отображается интерактивный предпросмотр подсветки синтаксиса.",
-      "Select a color scheme for code blocks and the editor. Below is an interactive syntax highlighting preview.",
-      "自选代码块与编辑区着色方案。支持经典浅色/深色及流行开发者配色预设，下方提供实时高亮预览卡片。"
+    /* ── Card 3: fonts ── */
+    var c3 = makeCard();
+    c3.appendChild(makeTitle(T("Шрифт интерфейса", "Interface font")));
+    c3.appendChild(makeNote(T(
+      "Шрифты с поддержкой кириллицы, латиницы и CJK, свободные от авторских прав (SIL OFL / Apache 2.0 / Ubuntu).",
+      "Open-source interface fonts with full Latin, Cyrillic, and code coverage (SIL OFL / Apache 2.0 / Ubuntu)."
     )));
 
-    var SYNTAX_PRESETS = [
-      { id: "Default Dark",   mode: "dark",  label: "Default Dark (默认深色)",  bg: "#101010", fg: "#cccccc", primary: "#007acc", kw: "#569cd6", fn: "#dcdcaa", str: "#ce9178", com: "#6a9955" },
-      { id: "One Dark Pro",   mode: "dark",  label: "One Dark Pro",             bg: "#282c34", fg: "#abb2bf", primary: "#61afef", kw: "#c678dd", fn: "#61afef", str: "#98c379", com: "#5c6370" },
-      { id: "Dracula",        mode: "dark",  label: "Dracula",                  bg: "#282a36", fg: "#f8f8f2", primary: "#bd93f9", kw: "#ff79c6", fn: "#50fa7b", str: "#f1fa8c", com: "#6272a4" },
-      { id: "Tokyo Night",    mode: "dark",  label: "Tokyo Night",              bg: "#1a1b26", fg: "#a9b1d6", primary: "#7aa2f7", kw: "#bb9af7", fn: "#7aa2f7", str: "#9ece6a", com: "#565f89" },
-      { id: "Monokai",        mode: "dark",  label: "Monokai",                  bg: "#272822", fg: "#f8f8f2", primary: "#f92672", kw: "#f92672", fn: "#a6e22e", str: "#e6db74", com: "#75715e" },
-      { id: "Catppuccin",     mode: "dark",  label: "Catppuccin (Macchiato)",   bg: "#24273a", fg: "#cad3f5", primary: "#c6a0f6", kw: "#c6a0f6", fn: "#8aadf4", str: "#a6da95", com: "#6e738d" },
-      { id: "Solarized Dark", mode: "dark",  label: "Solarized Dark",           bg: "#002b36", fg: "#93a1a1", primary: "#268bd2", kw: "#859900", fn: "#268bd2", str: "#2aa198", com: "#586e75" },
-      { id: "Default Light",  mode: "light", label: "Default Light (默认浅色)", bg: "#f9f9f9", fg: "#101010", primary: "#007acc", kw: "#0000ff", fn: "#795e26", str: "#a31515", com: "#008000" },
-      { id: "One Light",      mode: "light", label: "One Light",                bg: "#f5f5f5", fg: "#383a42", primary: "#4078f2", kw: "#a626a4", fn: "#4078f2", str: "#50a14f", com: "#a0a1a7" }
-    ];
+    var currentFont = FONTS.filter(function (x) { return x.id === cfg.font; })[0] || FONTS[0];
+    var fontContainer = document.createElement("div");
+    fontContainer.style.cssText = "display:flex;flex-direction:column;gap:10px;width:100%;box-sizing:border-box;margin-top:6px";
 
-    var curPresetId = store("agy_syntax_preset") || store("theme-preset-dark") || "One Dark Pro";
-    var curPreset = SYNTAX_PRESETS.find(function(p) { return p.id === curPresetId; }) || SYNTAX_PRESETS[1];
+    var previewCol = document.createElement("div");
+    previewCol.id = "agy-font-preview-box";
+    previewCol.style.cssText = "width:100%;box-sizing:border-box;background:rgba(255,255,255,.03);border:1px solid rgba(127,127,127,.2);" +
+      "border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px;transition:all .15s";
+    var previewHead = document.createElement("div");
+    previewHead.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px";
+    var previewLabel = document.createElement("span");
+    previewLabel.style.cssText = "font-size:10.5px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--muted-foreground,#888)";
+    previewLabel.textContent = T("Предпросмотр", "Live preview");
+    previewHead.appendChild(previewLabel);
+    var previewBadge = document.createElement("span");
+    previewBadge.id = "agy-font-preview-badge";
+    previewBadge.style.cssText = "font-size:10px;padding:2px 7px;border-radius:6px;background:rgba(127,127,127,.15);color:var(--muted-foreground,#888);font-family:monospace";
+    previewBadge.textContent = currentFont.license;
+    previewHead.appendChild(previewBadge);
+    previewCol.appendChild(previewHead);
 
-    var presetSelectWrap = document.createElement("div");
-    presetSelectWrap.style.cssText = "display:flex;flex-direction:column;gap:8px;margin-bottom:12px";
-    
-    var selLabel = document.createElement("div");
-    selLabel.style.cssText = "font-size:12.5px;color:var(--foreground,#f1f5f9);font-weight:500;";
-    selLabel.textContent = T("Схема подсветки кода", "Code Theme Preset", "预设方案：");
-    presetSelectWrap.appendChild(selLabel);
+    var previewText = document.createElement("div");
+    previewText.id = "agy-font-preview-text";
+    previewText.style.cssText = "font-size:13.5px;line-height:1.45;color:var(--foreground,#eee);font-family:" + currentFont.family;
+    previewText.innerHTML =
+      "<strong>Antigravity</strong> — " + esc(T("умный агент для Android.", "smart agent for Android.")) + "<br>" +
+      "The quick brown fox jumps over the lazy dog.<br>" +
+      "<span style='font-size:11.5px;opacity:0.8'>0123456789 • 中文示例 • АБВГД • ABCDEF • { ok: true }</span>";
+    previewCol.appendChild(previewText);
+    fontContainer.appendChild(previewCol);
 
-    var sel = document.createElement("select");
-    sel.style.cssText = "width:100%;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,0.06);color:var(--foreground,#f1f5f9);border:1px solid rgba(127,127,127,0.25);font-size:13px;outline:none;cursor:pointer;";
-    SYNTAX_PRESETS.forEach(function(p) {
-      var opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.label;
-      opt.style.background = "#222";
-      opt.style.color = "#fff";
-      if (p.id === curPreset.id) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    presetSelectWrap.appendChild(sel);
-    cTheme.appendChild(presetSelectWrap);
+    var selectCol = document.createElement("div");
+    selectCol.style.cssText = "width:100%;box-sizing:border-box;position:relative;display:flex;flex-direction:column";
+    var fontBtn = document.createElement("button");
+    fontBtn.type = "button";
+    fontBtn.id = "agy-font-select-btn";
+    fontBtn.setAttribute("aria-haspopup", "listbox");
+    fontBtn.setAttribute("aria-expanded", "false");
+    fontBtn.style.cssText = "width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;" +
+      "background:var(--secondary,rgba(255,255,255,.05));border:1px solid rgba(127,127,127,.25);border-radius:12px;" +
+      "color:var(--foreground,#eee);font-size:13.5px;font-weight:500;cursor:pointer;transition:border-color .15s, background .15s";
+    var btnContent = document.createElement("div");
+    btnContent.style.cssText = "display:flex;flex-direction:column;align-items:flex-start;text-align:left;overflow:hidden;flex:1 1 auto";
+    var btnTitle = document.createElement("span");
+    btnTitle.id = "agy-font-btn-title";
+    btnTitle.style.cssText = "font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+    btnTitle.textContent = T(currentFont.ru, currentFont.en);
+    btnContent.appendChild(btnTitle);
+    var btnSub = document.createElement("span");
+    btnSub.id = "agy-font-btn-sub";
+    btnSub.style.cssText = "font-size:11px;color:var(--muted-foreground,#888);white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+    btnSub.textContent = currentFont.license;
+    btnContent.appendChild(btnSub);
+    fontBtn.appendChild(btnContent);
+    var arrowIcon = document.createElement("span");
+    arrowIcon.style.cssText = "flex-shrink:0;opacity:0.7;display:inline-flex";
+    arrowIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+    fontBtn.appendChild(arrowIcon);
+    selectCol.appendChild(fontBtn);
 
-    /* Live Preview Box */
-    var previewBox = document.createElement("div");
-    previewBox.id = "agy-syntax-preview-box";
-    previewBox.style.cssText = "border-radius:12px;border:1px solid rgba(127,127,127,0.2);padding:14px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12.5px;line-height:1.6;overflow-x:auto;box-shadow:inset 0 1px 4px rgba(0,0,0,0.2);transition:all 0.2s ease;";
+    var dropdown = document.createElement("div");
+    dropdown.id = "agy-font-dropdown";
+    dropdown.setAttribute("role", "listbox");
+    dropdown.style.cssText = "display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;width:100%;" +
+      "max-height:280px;overflow-y:auto;z-index:9999;border-radius:14px;background:var(--agy-glass-surface,rgba(24,24,28,.95));" +
+      "border:1px solid var(--agy-glass-border,rgba(127,127,127,.25));" +
+      "box-shadow:var(--agy-glass-shadow,0 16px 40px rgba(0,0,0,.5));padding:6px;box-sizing:border-box";
 
-    function updatePreview(p) {
-      previewBox.style.backgroundColor = p.bg;
-      previewBox.style.color = p.fg;
-      previewBox.innerHTML = 
-        '<div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(127,127,127,0.15);padding-bottom:6px;margin-bottom:10px;">' +
-        '  <span style="font-size:11px;color:rgba(127,127,127,0.8);letter-spacing:0.5px;">PREVIEW: theme_preview.ts</span>' +
-        '  <span style="width:10px;height:10px;border-radius:50%;background:' + p.primary + ';display:inline-block;"></span>' +
-        '</div>' +
-        '<div><span style="color:' + p.kw + ';font-weight:600;">import</span> { <span style="color:' + p.fn + ';">AgentWindow</span> } <span style="color:' + p.kw + ';font-weight:600;">from</span> <span style="color:' + p.str + ';">"@leostryx/core"</span>;</div>' +
-        '<div style="color:' + p.com + ';font-style:italic;">// ' + T("Настройки темы применены успешно", "Theme applied successfully", "代码着色器工作正常") + '</div>' +
-        '<div><span style="color:' + p.kw + ';font-weight:600;">export async function</span> <span style="color:' + p.fn + ';">initSession</span>(): <span style="color:' + p.primary + ';">Promise</span>&lt;<span style="color:' + p.primary + ';">boolean</span>&gt; {</div>' +
-        '  <div>  <span style="color:' + p.kw + ';font-weight:600;">const</span> model = <span style="color:' + p.str + ';">"Gemini 2.5 Pro"</span>;</div>' +
-        '  <div>  <span style="color:' + p.kw + ';font-weight:600;">return</span> <span style="color:' + p.fn + ';">mountAgent</span>({ model, fps: <span style="color:' + p.primary + ';">120</span> });</div>' +
-        '<div>}</div>';
-    }
-    updatePreview(curPreset);
-    cTheme.appendChild(previewBox);
-
-    sel.onchange = function() {
-      var found = SYNTAX_PRESETS.find(function(p) { return p.id === sel.value; });
-      if (found) {
-        store("agy_syntax_preset", found.id);
-        if (found.mode === "light" && VALID_LIGHT_PRESETS[found.id]) {
-          store("theme-preset-light", found.id);
-        } else if (found.mode === "dark" && VALID_DARK_PRESETS[found.id]) {
-          store("theme-preset-dark", found.id);
-        }
-        updatePreview(found);
+    FONTS.forEach(function (f) {
+      var isSel = f.id === cfg.font;
+      var item = document.createElement("div");
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", isSel ? "true" : "false");
+      item.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:8px;" +
+        "cursor:pointer;transition:background .12s;background:" + (isSel ? "var(--agy-glass-item-hover,rgba(255,255,255,.08))" : "transparent");
+      var itemInfo = document.createElement("div");
+      itemInfo.style.cssText = "display:flex;flex-direction:column;gap:1px;text-align:left";
+      var itemTitle = document.createElement("span");
+      itemTitle.style.cssText = "font-size:13px;font-weight:" + (isSel ? "600" : "500") + ";color:var(--foreground,#eee);font-family:" + f.family;
+      itemTitle.textContent = T(f.ru, f.en);
+      itemInfo.appendChild(itemTitle);
+      var itemDesc = document.createElement("span");
+      itemDesc.style.cssText = "font-size:10.5px;color:var(--muted-foreground,#888)";
+      itemDesc.textContent = T(f.desc, f.desc) + " · " + f.license;
+      itemInfo.appendChild(itemDesc);
+      item.appendChild(itemInfo);
+      if (isSel) {
+        var check = document.createElement("span");
+        check.style.cssText = "color:" + cfg.color + ";font-size:13px;font-weight:700";
+        check.textContent = "✓";
+        item.appendChild(check);
       }
+      item.onmouseenter = function () {
+        if (!isSel) item.style.background = "var(--agy-glass-item-hover,rgba(255,255,255,.05))";
+      };
+      item.onmouseleave = function () {
+        if (!isSel) item.style.background = "transparent";
+      };
+      item.onclick = function (e) {
+        e.stopPropagation();
+        cfg.font = f.id;
+        saveCfg();
+        store("agyFontFamily", f.id);
+        applyFont(f.id);
+        dropdown.style.display = "none";
+        fontBtn.setAttribute("aria-expanded", "false");
+        previewText.style.fontFamily = f.family;
+        previewBadge.textContent = f.license;
+        btnTitle.textContent = T(f.ru, f.en);
+        btnSub.textContent = f.license;
+        render(el);
+        var s = document.getElementById("agy-brand-status");
+        if (s) {
+          s.textContent = T("Шрифт применён: ", "Font applied: ") + T(f.ru, f.en) + " (" + f.license + ")";
+          s.style.color = "#10b981";
+        }
+      };
+      dropdown.appendChild(item);
+    });
+    selectCol.appendChild(dropdown);
+    fontBtn.onclick = function (e) {
+      e.stopPropagation();
+      var open = dropdown.style.display === "block";
+      dropdown.style.display = open ? "none" : "block";
+      fontBtn.setAttribute("aria-expanded", open ? "false" : "true");
     };
+    document.addEventListener("pointerdown", function (e) {
+      if (dropdown.style.display === "block" && !selectCol.contains(e.target)) {
+        dropdown.style.display = "none";
+        fontBtn.setAttribute("aria-expanded", "false");
+      }
+    }, true);
+    fontContainer.appendChild(selectCol);
+    c3.appendChild(fontContainer);
+    el.appendChild(c3);
 
-    el.appendChild(cTheme);
+    /* ── Card 4: popup & panel style ── */
+    var curPopupStyle = getPopupStyle();
+    var c4 = makeCard();
+    c4.appendChild(makeTitle(T("Стиль всплывающих окон", "Popup & panel style")));
+    c4.appendChild(makeNote(T(
+      "Выберите фон всплывающих меню, списков и диалогов: матовое стекло с размытием или сплошной фон без размытия и прозрачности для экономии заряда.",
+      "Choose the background of popups, menus and dialogs: frosted glass with blur or solid colour without blur and transparency to save battery."
+    )));
 
-    var sl = scaleRow.querySelector("#agy-scale-slider");
-    var slVal = scaleRow.querySelector("#agy-scale-val");
-    var mSl = scaleRow.querySelector("#agy-menu-scale-slider");
-    var mSlVal = scaleRow.querySelector("#agy-menu-scale-val");
-    if (sl && slVal) {
-      sl.oninput = function() {
-        slVal.textContent = sl.value + "%";
-        store("agy_ui_scale", sl.value);
-        if (window.__agyApplyScaling) window.__agyApplyScaling();
+    var psGrid = document.createElement("div");
+    psGrid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px";
+
+    POPUP_STYLES.forEach(function (ps) {
+      var selected = curPopupStyle === ps.id;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute("aria-pressed", selected ? "true" : "false");
+      btn.style.cssText = "position:relative;display:flex;align-items:center;gap:12px;" +
+        "padding:10px 12px;border-radius:14px;cursor:pointer;font:inherit;text-align:left;box-sizing:border-box;width:100%;" +
+        "border:1px solid " + (selected ? cfg.color : "rgba(127,127,127,.22)") + ";" +
+        "background:" + (selected ? "color-mix(in srgb, " + cfg.color + " 14%, transparent)" : "rgba(255,255,255,.02)") + ";" +
+        "transition:border-color .15s, background .15s";
+
+      var preview = document.createElement("span");
+      var previewStyle = "display:flex;align-items:center;justify-content:center;width:52px;height:36px;border-radius:9px;" +
+        "border:1px solid rgba(127,127,127,.24);position:relative;overflow:hidden;pointer-events:none;flex-shrink:0;";
+      if (ps.id === "frosted") {
+        previewStyle += "background:linear-gradient(135deg, color-mix(in srgb, " + cfg.color + " 26%, rgba(127,127,127,.24)), rgba(127,127,127,.14));backdrop-filter:blur(10px)";
+      } else {
+        previewStyle += "background:var(--background,#18181c)";
+      }
+      preview.style.cssText = previewStyle;
+      var sample = document.createElement("span");
+      sample.style.cssText = "font-size:10.5px;font-weight:600;letter-spacing:.2px;color:var(--foreground,#eee)";
+      sample.textContent = ps.id === "frosted" ? "Blur" : "Solid";
+      preview.appendChild(sample);
+      btn.appendChild(preview);
+
+      var textCol = document.createElement("span");
+      textCol.style.cssText = "display:flex;flex-direction:column;gap:2px;flex:1 1 auto;min-width:0";
+
+      var title = document.createElement("span");
+      title.style.cssText = "font-size:13px;font-weight:600;line-height:1.25;color:var(--foreground,#eee)";
+      title.textContent = T(ps.ruTitle, ps.enTitle);
+      textCol.appendChild(title);
+
+      var desc = document.createElement("span");
+      desc.style.cssText = "font-size:11.5px;line-height:1.35;color:#999";
+      desc.textContent = T(ps.ruDesc, ps.enDesc);
+      textCol.appendChild(desc);
+
+      btn.appendChild(textCol);
+
+      if (selected) {
+        var tick = document.createElement("span");
+        tick.style.cssText = "font-size:13px;font-weight:700;color:" + cfg.color + ";flex-shrink:0";
+        tick.textContent = "✓";
+        btn.appendChild(tick);
+      }
+
+      btn.onclick = function () {
+        if (getPopupStyle() === ps.id) return;
+        setPopupStyle(ps.id);
+        render(el);
+        var s = document.getElementById("agy-brand-status");
+        if (s) {
+          s.textContent = T("Стиль окон применён: ", "Popup style applied: ") + T(ps.ruTitle, ps.enTitle);
+          s.style.color = "#10b981";
+        }
       };
-    }
-    if (mSl && mSlVal) {
-      mSl.oninput = function() {
-        mSlVal.textContent = mSl.value + "%";
-        store("agy_menu_scale", mSl.value);
-        if (window.__agyApplyScaling) window.__agyApplyScaling();
-      };
-    }
+      psGrid.appendChild(btn);
+    });
+    c4.appendChild(psGrid);
+    el.appendChild(c4);
 
     /* ── status ── */
     var st = document.createElement("div");
     st.id = "agy-brand-status";
     st.style.cssText = "font-size:12.5px;line-height:1.5;color:#999;min-height:18px;padding:0 2px";
-    st.textContent = T(
-      "Логотип: " + packName(cfg.pack) + " · Цвет: " + cfg.color.toUpperCase(),
-      "Logo: " + packNameEn(cfg.pack) + " · Colour: " + cfg.color.toUpperCase(),
-      "图标：" + packName(cfg.pack) + " · 强调色：" + cfg.color.toUpperCase()
-    );
+    st.textContent = T("Логотип: ", "Logo: ") + packName(cfg.pack) + " · " + T("Цвет: ", "Colour: ") + cfg.color.toUpperCase() + " · " + T("Шрифт: ", "Font: ") + fontName(cfg.font) + " · " + T("Окна: ", "Popups: ") + popupStyleName(curPopupStyle);
     el.appendChild(st);
   }
 
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function fontName(id) {
+    var f = FONTS.filter(function (x) { return x.id === id; })[0];
+    return f ? T(f.ru, f.en) : id;
+  }
   function packName(id) {
     var p = PACKS.filter(function (x) { return x.id === id; })[0];
-    return p ? T(p.ru, p.en, p.zh) : id;
+    return p ? T(p.ru, p.en) : id;
   }
   function packNameEn(id) {
     var p = PACKS.filter(function (x) { return x.id === id; })[0];
@@ -574,100 +803,18 @@
   /* ------------------------------------------------------------- mount */
   window.__agyBrandMount = function (el) {
     if (!el) return;
-    if (el.__brandMounted && el.childElementCount > 0) return;
-    el.__brandMounted = true;
-    try {
-      el.setAttribute("data-brand-mounted", "1");
-      el.setAttribute("data-agy-no-translate", "");
-      applyColor(cfg.color);
-      el.style.cssText = "padding:4px 4px 24px;max-width:620px;box-sizing:border-box";
-      render(el);
-    } catch (err) {
-      el.__brandMounted = false;
-      console.warn("Brand mount error:", err);
-    }
+    applyColor(cfg.color);
+    applyFont(cfg.font);
+    if (el.getAttribute("data-brand-mounted") === "1") { render(el); return; }
+    el.setAttribute("data-brand-mounted", "1");
+    el.style.cssText = "padding:4px 4px 24px;max-width:620px;box-sizing:border-box";
+    render(el);
   };
-
-  window.__agyApplyScaling = function () {
-    var scale = parseInt(localStorage.getItem("agy_ui_scale") || "100", 10) / 100;
-    var menuScale = parseInt(localStorage.getItem("agy_menu_scale") || "100", 10) / 100;
-    var styleId = "agy-scale-override-style";
-    var st = document.getElementById(styleId);
-    if (!st) {
-      st = document.createElement("style");
-      st.id = styleId;
-      document.head.appendChild(st);
-    }
-    st.textContent =
-      (scale !== 1 ? "html, body { zoom: " + scale + "; } " : "") +
-      (menuScale !== 1 ?
-        "[data-testid='model-selector-panel'] [data-testid='model-selector-item'] { font-size: " + (14 * menuScale).toFixed(1) + "px !important; padding: " + (8 * menuScale).toFixed(1) + "px " + (10 * menuScale).toFixed(1) + "px !important; } " +
-        "[data-testid='model-selector-panel'] [data-testid='model-selector-header'] { font-size: " + (12 * menuScale).toFixed(1) + "px !important; } " +
-        "[data-testid='bottom-sheet'] :is(button, [role='menuitem']) { font-size: " + (14 * menuScale).toFixed(1) + "px !important; } "
-        : "");
-  };
-
-  /* ------------------------------------------------ MutationObserver Auto-Mount */
-  function scanAndMount() {
-    if (_isRendering) return;
-    try {
-      var hosts = document.querySelectorAll(".agy-brand-host");
-      for (var i = 0; i < hosts.length; i++) {
-        var host = hosts[i];
-        if (!host.__brandMounted || host.childElementCount === 0) {
-          window.__agyBrandMount(host);
-        }
-      }
-    } catch (e) {
-      console.warn("scanAndMount error:", e);
-    }
-  }
-
-  function hasUnmountedBrandHost(mutations) {
-    for (var i = 0; i < mutations.length; i++) {
-      var m = mutations[i];
-      if (m.target && m.target.closest && m.target.closest(".agy-brand-host")) continue;
-      var added = m.addedNodes;
-      for (var j = 0; j < added.length; j++) {
-        var n = added[j];
-        if (!n || n.nodeType !== 1) continue;
-        if ((n.classList && n.classList.contains("agy-brand-host")) ||
-            (n.querySelector && n.querySelector(".agy-brand-host"))) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  if (typeof window !== "undefined" && window.MutationObserver) {
-    try {
-      var _brandObserver = new MutationObserver(function(mutations) {
-        if (_isRendering) return;
-        if (hasUnmountedBrandHost(mutations)) {
-          scanAndMount();
-        }
-      });
-      var targetNode = document.body || document.documentElement;
-      if (targetNode) {
-        _brandObserver.observe(targetNode, { childList: true, subtree: true });
-      } else {
-        document.addEventListener("DOMContentLoaded", function() {
-          if (document.body) _brandObserver.observe(document.body, { childList: true, subtree: true });
-        });
-      }
-    } catch (e) {
-      console.warn("MutationObserver setup failed:", e);
-    }
-  }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () {
-      applyColor(cfg.color);
-      window.__agyApplyScaling();
-    });
+    document.addEventListener("DOMContentLoaded", function () { applyColor(cfg.color); applyFont(cfg.font); });
   } else {
     applyColor(cfg.color);
-    window.__agyApplyScaling();
+    applyFont(cfg.font);
   }
 })();

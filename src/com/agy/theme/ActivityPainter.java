@@ -3,26 +3,35 @@ package com.agy.theme;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
-import android.view.Display;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 
 /**
- * Paints the activity window (bars, background, system-ui flags),
- * unlocks native 120Hz/high-refresh display mode on the Window,
- * and smoothly animates theme color changes.
+ * Paints the activity window (status bar, navigation bar, decor background, icon polarity)
+ * with independent status/nav colors and smooth transitions for secondary pages/modals.
  */
 public final class ActivityPainter implements ValueAnimator.AnimatorUpdateListener {
 
     private static ValueAnimator activeAnimator;
-    private final Window targetWindow;
 
-    private ActivityPainter(Window window) {
+    private final Window targetWindow;
+    private final int startStatus;
+    private final int targetStatus;
+    private final int startNav;
+    private final int targetNav;
+    private final ArgbEvaluator evaluator = new ArgbEvaluator();
+
+    private ActivityPainter(Window window, int startStatus, int targetStatus, int startNav, int targetNav) {
         this.targetWindow = window;
+        this.startStatus = startStatus;
+        this.targetStatus = targetStatus;
+        this.startNav = startNav;
+        this.targetNav = targetNav;
     }
 
     @Override
@@ -31,71 +40,36 @@ public final class ActivityPainter implements ValueAnimator.AnimatorUpdateListen
             return;
         }
         try {
-            Object val = animation.getAnimatedValue();
-            if (val instanceof Integer) {
-                int c = (Integer) val;
-                targetWindow.setStatusBarColor(c);
-                targetWindow.setNavigationBarColor(c);
-            }
+            float frac = animation.getAnimatedFraction();
+            int s = (Integer) evaluator.evaluate(frac, startStatus, targetStatus);
+            int n = (Integer) evaluator.evaluate(frac, startNav, targetNav);
+            targetWindow.setStatusBarColor(s);
+            targetWindow.setNavigationBarColor(n);
         } catch (Throwable ignored) {
         }
     }
 
-    private static void unlockHighRefreshRate(Activity activity, Window window) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return;
-        }
-        try {
-            Display display = activity.getWindowManager().getDefaultDisplay();
-            if (display == null) {
-                return;
-            }
-            Display.Mode current = display.getMode();
-            Display.Mode[] modes = display.getSupportedModes();
-            if (current == null || modes == null || modes.length == 0) {
-                return;
-            }
-            Display.Mode best = current;
-            for (int i = 0; i < modes.length; i++) {
-                Display.Mode m = modes[i];
-                if (m.getPhysicalWidth() == current.getPhysicalWidth()
-                        && m.getPhysicalHeight() == current.getPhysicalHeight()
-                        && m.getRefreshRate() > best.getRefreshRate()) {
-                    best = m;
-                }
-            }
-            WindowManager.LayoutParams lp = window.getAttributes();
-            if (lp != null && (lp.preferredDisplayModeId != best.getModeId()
-                    || lp.preferredRefreshRate != best.getRefreshRate())) {
-                lp.preferredDisplayModeId = best.getModeId();
-                lp.preferredRefreshRate = best.getRefreshRate();
-                window.setAttributes(lp);
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                View decor = window.getDecorView();
-                if (decor != null) {
-                    try {
-                        java.lang.reflect.Method m = View.class.getMethod("setFrameRate", float.class, int.class);
-                        m.invoke(decor, best.getRefreshRate(), 0);
-                    } catch (Throwable ignored) {}
-                }
-            }
-        } catch (Throwable ignored) {
-        }
+    private static int maxChannelDelta(int c1, int c2) {
+        int dr = Math.abs(Color.red(c1) - Color.red(c2));
+        int dg = Math.abs(Color.green(c1) - Color.green(c2));
+        int db = Math.abs(Color.blue(c1) - Color.blue(c2));
+        return Math.max(dr, Math.max(dg, db));
     }
 
     public static void apply(Activity activity, boolean dark) {
         if (activity == null) {
             return;
         }
-        int bg = dark ? ThemeColors.COLOR_DARK : ThemeColors.COLOR_LIGHT;
         Window window = activity.getWindow();
         if (window == null) {
             return;
         }
 
-        // 1. Unlock native 120Hz / highest supported refresh rate on the window
-        unlockHighRefreshRate(activity, window);
+        int baseBg = dark ? ThemeColors.COLOR_DARK : ThemeColors.COLOR_LIGHT;
+        int targetStatus = ThemeColors.HAS_CUSTOM_BARS ? ThemeColors.CUSTOM_STATUS_COLOR : baseBg;
+        int targetNav = ThemeColors.HAS_CUSTOM_BARS ? ThemeColors.CUSTOM_NAV_COLOR : baseBg;
+        boolean statusDark = ThemeColors.HAS_CUSTOM_BARS ? ThemeColors.CUSTOM_STATUS_DARK : dark;
+        boolean navDark = ThemeColors.HAS_CUSTOM_BARS ? ThemeColors.CUSTOM_NAV_DARK : dark;
 
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS
@@ -109,8 +83,9 @@ public final class ActivityPainter implements ValueAnimator.AnimatorUpdateListen
             }
         }
 
-        // 2. Smooth color transition when switching between themes
-        int oldColor = window.getStatusBarColor();
+        int oldStatus = window.getStatusBarColor();
+        int oldNav = window.getNavigationBarColor();
+
         if (activeAnimator != null) {
             try {
                 activeAnimator.cancel();
@@ -118,50 +93,65 @@ public final class ActivityPainter implements ValueAnimator.AnimatorUpdateListen
             }
             activeAnimator = null;
         }
-        if (oldColor != 0 && oldColor != bg && Math.abs((oldColor & 0xFF) - (bg & 0xFF)) > 12) {
+
+        int delta = Math.max(maxChannelDelta(oldStatus, targetStatus), maxChannelDelta(oldNav, targetNav));
+        if (oldStatus != 0 && oldNav != 0 && delta > 10) {
             try {
-                ValueAnimator anim = ValueAnimator.ofObject(new ArgbEvaluator(), oldColor, bg);
-                anim.setDuration(180L);
-                anim.addUpdateListener(new ActivityPainter(window));
+                ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
+                anim.setDuration(140L);
+                anim.addUpdateListener(new ActivityPainter(
+                        window,
+                        oldStatus,
+                        targetStatus,
+                        oldNav,
+                        targetNav
+                ));
                 anim.start();
                 activeAnimator = anim;
             } catch (Throwable t) {
-                window.setStatusBarColor(bg);
-                window.setNavigationBarColor(bg);
+                window.setStatusBarColor(targetStatus);
+                window.setNavigationBarColor(targetNav);
             }
         } else {
-            window.setStatusBarColor(bg);
-            window.setNavigationBarColor(bg);
+            window.setStatusBarColor(targetStatus);
+            window.setNavigationBarColor(targetNav);
         }
 
-        window.setBackgroundDrawable(new ColorDrawable(bg));
+        window.setBackgroundDrawable(new ColorDrawable(baseBg));
         View decor = window.getDecorView();
-        decor.setBackgroundColor(bg);
+        if (decor != null) {
+            decor.setBackgroundColor(baseBg);
 
-        // 3. Apply light/dark system bar icons via both legacy flags and Android 11+ WindowInsetsController
-        int flags = decor.getSystemUiVisibility();
-        if (dark) {
-            flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
-            }
-        } else {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            int flags = decor.getSystemUiVisibility();
+            if (statusDark) {
+                flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (navDark) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
             }
+            decor.setSystemUiVisibility(flags);
         }
-        decor.setSystemUiVisibility(flags);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 WindowInsetsController controller = window.getInsetsController();
                 if (controller != null) {
+                    int appearance = 0;
+                    if (!statusDark) {
+                        appearance |= WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS;
+                    }
+                    if (!navDark) {
+                        appearance |= WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                    }
                     int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                             | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-                    controller.setSystemBarsAppearance(dark ? 0 : mask, mask);
+                    controller.setSystemBarsAppearance(appearance, mask);
                 }
             } catch (Throwable ignored) {
             }

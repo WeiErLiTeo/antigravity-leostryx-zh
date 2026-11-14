@@ -5,6 +5,206 @@
   if (window.__agyRuFixes) return;
   window.__agyRuFixes = true;
 
+  /* ---- Dynamic Theme-Adaptive Glass Variables ----------------------------
+   * Reads the active theme tokens (--background, --foreground) directly from
+   * document.documentElement (which main.js updates on theme switch) and sets
+   * precise RGBA glass tokens for all menus, dropdowns, and popups.
+   * Supports Default Dark, Default Light, and ALL theme presets (Dracula,
+   * Catppuccin, One Dark, Monokai, Tokyo Night, Gruvbox, etc.). */
+  function resolveCssColor(val, doc, body) {
+    if (!val || typeof val !== "string") return "";
+    var s = val.trim();
+    for (var depth = 0; depth < 4 && s.indexOf("var(") === 0; depth++) {
+      var m = s.match(/^var\(\s*(--[a-zA-Z0-9_-]+)\s*(?:,\s*([^)]+))?\)/);
+      if (!m) break;
+      var prop = m[1];
+      var fb = (m[2] || "").trim();
+      var next = (doc && doc.style && doc.style.getPropertyValue(prop)) || "";
+      if (!next && doc) {
+        try { next = getComputedStyle(doc).getPropertyValue(prop) || ""; } catch (e) {}
+      }
+      if (!next && body) {
+        try { next = getComputedStyle(body).getPropertyValue(prop) || ""; } catch (e) {}
+      }
+      s = (next || fb || "").trim();
+    }
+    return s;
+  }
+
+  function parseColorToRgb(str, fallback) {
+    if (!str || typeof str !== "string") return fallback;
+    str = str.trim();
+    if (str.startsWith("#")) {
+      var raw = str.slice(1);
+      if (raw.length === 3) raw = raw[0] + raw[0] + raw[1] + raw[1] + raw[2] + raw[2];
+      if (raw.length === 6 || raw.length === 8) {
+        var num = parseInt(raw.slice(0, 6), 16);
+        if (!isNaN(num)) return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+      }
+      return fallback;
+    }
+    var m = str.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (m) {
+      return { r: parseInt(m[1], 10), g: parseInt(m[2], 10), b: parseInt(m[3], 10) };
+    }
+    var spaceM = str.match(/^(\d+)\s+(\d+)\s+(\d+)$/);
+    if (spaceM) {
+      return { r: parseInt(spaceM[1], 10), g: parseInt(spaceM[2], 10), b: parseInt(spaceM[3], 10) };
+    }
+    return fallback;
+  }
+
+  var POPUP_STYLE_KEY = "agyPopupStyle";
+  function normPopupStyle(v) {
+    return v === "solid" ? "solid" : "frosted";
+  }
+  function getPopupStyle() {
+    try {
+      var raw = window.localStorage.getItem(POPUP_STYLE_KEY);
+      if (raw === "transparent") {
+        window.localStorage.setItem(POPUP_STYLE_KEY, "frosted");
+        return "frosted";
+      }
+      return normPopupStyle(raw);
+    } catch (e) {
+      return "frosted";
+    }
+  }
+
+  var lastGlassBg = "";
+  var lastGlassFg = "";
+  var lastGlassDark = null;
+  var lastGlassPrimary = "";
+  var lastPopupStyle = "";
+
+  function updateGlassTheme(force) {
+    var doc = document.documentElement;
+    var body = document.body;
+    if (!doc) return;
+    var popupStyle = getPopupStyle();
+    if (doc.getAttribute("data-agy-popup-style") !== popupStyle) {
+      doc.setAttribute("data-agy-popup-style", popupStyle);
+    }
+
+    var bg = (doc.style && doc.style.getPropertyValue("--background")) || "";
+    var fg = (doc.style && doc.style.getPropertyValue("--foreground")) || "";
+    var primary = (doc.style && doc.style.getPropertyValue("--primary")) || "";
+    if (!bg) {
+      try { bg = getComputedStyle(doc).getPropertyValue("--background") || ""; } catch (e) {}
+    }
+    if (!fg) {
+      try { fg = getComputedStyle(doc).getPropertyValue("--foreground") || ""; } catch (e) {}
+    }
+    if (!primary) {
+      try { primary = getComputedStyle(doc).getPropertyValue("--primary") || ""; } catch (e) {}
+    }
+
+    bg = resolveCssColor(bg, doc, body);
+    fg = resolveCssColor(fg, doc, body);
+    primary = resolveCssColor(primary, doc, body);
+
+    if ((!bg || bg.indexOf("var(") === 0) && body) {
+      try {
+        var bodyBg = getComputedStyle(body).backgroundColor || "";
+        if (bodyBg && bodyBg !== "rgba(0, 0, 0, 0)" && bodyBg !== "transparent") bg = bodyBg;
+      } catch (e) {}
+    }
+
+    /* agyBrandConfig НЕ перебивает --primary: акцент бренда красит ТОЛЬКО
+       лого/иконки/сплэшскрин (agy_brand.js applyColor()), а --primary
+       берётся напрямую из выбранного пресета темы (Dracula, Monokai и т.д.) */
+
+    bg = bg.trim();
+    fg = fg.trim();
+
+    // Надёжное определение тёмной/светлой темы:
+    // 1. Проверяем классы document.body (main.js переключает theme-light / theme-dark именно на body)
+    // 2. Вычисляем яркость фона (lum < 128)
+    var isLight = !!(body && (body.classList.contains("theme-light") || body.classList.contains("light")));
+    var isDarkExplicit = !!(body && (body.classList.contains("dark") || body.classList.contains("theme-dark") || body.classList.contains("dark-theme")));
+    var tempBgRgb = parseColorToRgb(bg, { r: 24, g: 24, b: 28 });
+    var lum = (tempBgRgb.r * 299 + tempBgRgb.g * 587 + tempBgRgb.b * 114) / 1000;
+    var isDark = isLight ? false : (isDarkExplicit ? true : lum < 128);
+
+    // Синхронизируем documentElement.classList со значением темы, чтобы CSS-селекторы html.light и html.dark работали безупречно
+    doc.classList.toggle("dark", isDark);
+    doc.classList.toggle("light", !isDark);
+
+    primary = primary.trim() || (isDark ? "#a3e635" : "#0b84ff");
+
+    if (force !== true && bg === lastGlassBg && fg === lastGlassFg && isDark === lastGlassDark && primary === lastGlassPrimary && popupStyle === lastPopupStyle) return;
+    lastGlassBg = bg;
+    lastGlassFg = fg;
+    lastGlassDark = isDark;
+    lastGlassPrimary = primary;
+    lastPopupStyle = popupStyle;
+
+    var bgRgb = parseColorToRgb(bg, isDark ? { r: 24, g: 24, b: 28 } : { r: 255, g: 255, b: 255 });
+    var fgRgb = parseColorToRgb(fg, isDark ? { r: 220, g: 220, b: 220 } : { r: 20, g: 20, b: 20 });
+
+    // По умолчанию (frosted): матовое стекло с размытием blur(22px) saturate(180%), плотность 0.84.
+    // Режим solid (экономия заряда): 1.0 без размытия и альфа-смешивания.
+    var sR = bgRgb.r;
+    var sG = bgRgb.g;
+    var sB = bgRgb.b;
+    var alpha = popupStyle === "solid" ? 1 : 0.84;
+    if (!isDark && popupStyle !== "solid") {
+      var accent = parseColorToRgb(primary, { r: 11, g: 132, b: 255 });
+      var wash = 0.06;
+      sR = sR * (1 - wash) + accent.r * wash;
+      sG = sG * (1 - wash) + accent.g * wash;
+      sB = sB * (1 - wash) + accent.b * wash;
+    }
+    var surface = alpha >= 1
+      ? ("rgb(" + Math.round(sR) + ", " + Math.round(sG) + ", " + Math.round(sB) + ")")
+      : ("rgba(" + Math.round(sR) + ", " + Math.round(sG) + ", " + Math.round(sB) + ", " + alpha + ")");
+    var blur = popupStyle === "frosted" ? "blur(22px) saturate(180%)" : "none";
+
+    var border = "color-mix(in srgb, " + primary + " " + (isDark ? "26%" : "25%") + ", " + (isDark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.14)") + ")";
+    var hover = "color-mix(in srgb, " + primary + " " + (isDark ? "15%" : "14%") + ", transparent)";
+    var active = "color-mix(in srgb, " + primary + " " + (isDark ? "26%" : "24%") + ", transparent)";
+    var shadow = isDark
+      ? "0 18px 46px -6px rgba(0, 0, 0, 0.55), 0 0 0 1px color-mix(in srgb, " + primary + " 18%, transparent)"
+      : "0 14px 38px -4px rgba(0, 0, 0, 0.14), 0 0 0 1px color-mix(in srgb, " + primary + " 14%, transparent)";
+
+    [doc, body].forEach(function (el) {
+      if (!el || !el.style) return;
+      el.style.setProperty("--agy-glass-surface", surface, "important");
+      el.style.setProperty("--agy-glass-blur", blur, "important");
+      el.style.setProperty("--agy-glass-border", border, "important");
+      el.style.setProperty("--agy-glass-item-hover", hover, "important");
+      el.style.setProperty("--agy-glass-item-active", active, "important");
+      el.style.setProperty("--agy-glass-shadow", shadow, "important");
+      el.style.setProperty("--popover", surface, "important");
+    });
+  }
+  window.__agyUpdateGlassTheme = updateGlassTheme;
+  window.__agyGetPopupStyle = getPopupStyle;
+  window.__agySetPopupStyle = function (style) {
+    var val = normPopupStyle(style);
+    try { window.localStorage.setItem(POPUP_STYLE_KEY, val); } catch (e) {}
+    updateGlassTheme(true);
+    return val;
+  };
+  updateGlassTheme();
+  if (typeof MutationObserver !== "undefined") {
+    try {
+      var themeObs = new MutationObserver(updateGlassTheme);
+      if (document.documentElement) {
+        themeObs.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["style", "class"]
+        });
+      }
+      if (document.body) {
+        themeObs.observe(document.body, {
+          attributes: true,
+          attributeFilter: ["style", "class"]
+        });
+      }
+    } catch (_) {}
+  }
+
 
   /* ---- Usage: "Refreshing…" without changing the panel height ----------
    * 2.4.1 inserts a status row (+ separator) above the quota list while it
@@ -46,12 +246,10 @@
 
   function label() {
     var lang = "";
-    try { lang = (window.__agyI18n && window.__agyI18n.getLanguage && window.__agyI18n.getLanguage()) || (window.AgyLang && window.AgyLang.getLang()) || ""; } catch (e) {}
-    if (!lang || lang === "system") {
-      var nav = (navigator.language || "").toLowerCase();
-      lang = nav.indexOf("zh") === 0 ? "zh" : nav.indexOf("ru") === 0 ? "ru" : "zh";
-    }
-    return lang === "zh" ? "刷新中…" : lang === "ru" ? "Обновление…" : "Refreshing…";
+    try { lang = (window.__agyI18n && window.__agyI18n.getLanguage()) || (window.AgyLang && window.AgyLang.getLang()) || ""; } catch (e) {}
+    if (lang === "system" || !lang) lang = /^zh\b/i.test(navigator.language || "") ? "zh" : (/^ru\b/i.test(navigator.language || "") ? "ru" : "en");
+    if (lang === "zh") return "正在刷新…";
+    return lang === "ru" ? "Обновление…" : "Refreshing…";
   }
 
   function place() {
@@ -78,26 +276,23 @@
     badge.style.right = Math.max(12, Math.round(window.innerWidth - r.right + 16)) + "px";
   }
 
-  function schedule() {
-    if (!raf && document.querySelector(ROW_SEL)) raf = requestAnimationFrame(place);
-    else if (badge && badge.style.display !== "none" && !document.querySelector(ROW_SEL)) badge.style.display = "none";
-  }
+  function schedule() { if (!raf) raf = requestAnimationFrame(place); }
 
   function start() {
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", schedule, { passive: true });
+    document.addEventListener("scroll", schedule, { passive: true, capture: true });
   }
   if (document.body) start(); else document.addEventListener("DOMContentLoaded", start, { once: true });
 
   /* ---- Composer focus guard (ТЗ 6.3, B-08) ---------------------------------
-   * 2.4.1 refocuses the chat editor after "+" / the model selector / menu
-   * closes, which pops the keyboard. Block that programmatic focus when the
-   * last touch was on those controls or inside an open menu/sheet. A touch on
-   * the editor itself, and menu items that need typing (Mentions / Actions),
-   * keep the original behaviour. */
+   * Keyboard must open ONLY when user focuses directly on the chat editor,
+   * after selecting Mentions/Actions/Browser, or when an attachment is added.
+   * Tapping buttons (+, model selector, shield, mic, subagent) must NOT open keyboard. */
   var BOX = "[data-testid='agent-input-box']";
   var MENUISH = "[role='menu'],[role='menuitem'],[role='listbox'],[role='option'],[role='dialog']," +
-                "[data-testid^='model-selector'],[aria-label='Add context'],[aria-label='Добавить контекст']";
+                "[data-testid^='model-selector'],[aria-label='Add context'],[aria-label='Добавить контекст'],[aria-label='添加上下文']," +
+                "#agy-subagent-btn,.agy-shield-btn,[data-testid='model-selector-trigger']";
   var guard = { t: 0, block: false };
 
   function isEditor(el) {
@@ -105,21 +300,28 @@
       (el.isContentEditable || el.tagName === "TEXTAREA"));
   }
   function menuOpen() {
-    return !!document.querySelector("[role='menu'],[role='listbox'],[role='dialog'],[data-testid='model-selector-panel']");
+    return !!document.querySelector("[role='menu'],[role='listbox'],[role='dialog'],[data-testid='model-selector-panel'],#agy-subagents-popover,#agy-shield");
   }
   document.addEventListener("pointerdown", function (e) {
     var t = e.target && e.target.nodeType === 1 ? e.target : (e.target && e.target.parentElement);
     if (!t || !t.closest) return;
     var item = t.closest("[role='menuitem'],[role='option'],button");
     var label = item ? (item.textContent || "").trim() : "";
-    var needsInput = /^(Mentions|Actions|Упоминания|Действия)$/.test(label);
+    var needsInput = /^(Mentions|Actions|Browser|Упоминания|Действия|Браузер|提及|操作|浏览器)$/.test(label);
+    /* File picker (Media/Folder) needs a clean user-gesture context on Android.
+       If we blur/block here, input.click() won't open the system file dialog.
+       Return early — let React's onClick handle everything. */
+    if (/^(Media|Медиа|Photos & Videos|Фото и видео|Folder|Папка|媒体|媒体文件|照片\/视频|照片图片|文件夹)$/.test(label)) return;
     var onEditor = isEditor(t) || !!t.closest(BOX + " [contenteditable='true']");
-    var onControls = !!t.closest(MENUISH);
-    // The "+" (Add context) button must open its menu even while text is typed.
-    // Blocking editor focus here blurred the editor, dismissed the keyboard and
-    // the layout shift ate the tap, so "+" did nothing. Never guard on that tap.
-    var onAdd = !!t.closest("[aria-label='Add context'],[aria-label='Добавить контекст']");
-    guard = { t: Date.now(), block: !onEditor && !needsInput && !onAdd && (onControls || menuOpen()) };
+    var onControls = !!t.closest(MENUISH) || !!t.closest("#agy-subagent-btn,.agy-shield-btn,[data-testid='model-selector-trigger']");
+
+    if (!onEditor && !needsInput && (onControls || menuOpen())) {
+      guard = { t: Date.now(), block: true };
+      var ae = document.activeElement;
+      if (ae && isEditor(ae)) { try { ae.blur(); } catch (_) {} }
+    } else if (onEditor || needsInput) {
+      guard = { t: 0, block: false };
+    }
   }, true);
 
   function shouldBlock(el) {
@@ -136,40 +338,197 @@
     }
   }, true);
 
-  /* ---- Focus allowed again once an attachment is really added (ТЗ 6.3) --- */
+  /* ---- Focus allowed again once an attachment is really added --- */
   new MutationObserver(function (list) {
     for (var i = 0; i < list.length; i++) {
       var added = list[i].addedNodes;
       for (var j = 0; j < added.length; j++) {
         var n = added[j];
         if (n.nodeType === 1 && (n.matches("[data-testid='input-attachment']") || n.querySelector("[data-testid='input-attachment']"))) {
-          // After a file is attached the editor must NOT grab focus (it kept the
-          // keyboard up and swallowed the next tap on "+").
-          guard = { t: Date.now(), block: true };
-          var ae = document.activeElement;
-          if (ae && isEditor(ae)) { try { ae.blur(); } catch (err) {} }
+          guard = { t: 0, block: false };
+          setTimeout(focusEditor, 120);
           return;
         }
       }
     }
   }).observe(document.documentElement, { childList: true, subtree: true });
 
-  /* ---- Chat input repaint nudge -------------------------------------------
-   * Intermittently, after the keyboard opens on an empty focused input, the
-   * WebView leaves the input card unpainted (black) until the next repaint
-   * (typing or tapping the chat fixes it). Force that repaint ourselves while
-   * the keyboard settles: read layout, then toggle a no-op opacity for 2 frames. */
-  function nudge() {}
-  function nudgeSeries() {}
+  /* ---- Focus the chat input (after an action / after an attachment) ------ */
+  function focusEditor() {
+    var box = document.querySelector(BOX);
+    if (!box) return;
+    var el = box.querySelector("[contenteditable='true']");
+    if (!el || box.contains(document.activeElement)) return;
+    guard = { t: 0, block: false };
+    try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (_) {} }
+  }
 
+  /* ---- Attach: Media must be as fast as Folder ---------------------------
+   * `Folder` creates a *bare* <input type=file> (no accept) and Chromium hands
+   * it to DocumentsUI at once. `Media` reuses the composer input; if that input
+   * carries a long accept list (~80 MIME entries) the WebView resolves every
+   * entry before the chooser is created — that is the visible delay.
+   * The fix lives in the bundle (`generated/main.js`: PYb is the wildcard MIME),
+   * so normally nothing is intercepted here. This listener is only a safety net
+   * for a bundle update that brings the heavy list back: collapse `accept` to the
+   * wildcard MIME and let the native path run unchanged.
+   *
+   * IMPORTANT: never preventDefault / stopPropagation on this click. React's
+   * onClick is what calls input.click(); cancelling it (the old fast-picker
+   * workaround did exactly that) leaves the dialog closed when the synthetic
+   * picker fails, which is worse than the delay it tried to remove.
+   * MainActivity.onShowFileChooser ignores `accept` entirely (always
+   * ACTION_OPEN_DOCUMENT + ALLOW_MULTIPLE), so both entries behave identically. */
+  function composerFileInput() {
+    var box = document.querySelector(BOX) || document;
+    var list;
+    try { list = box.querySelectorAll("input[type='file']"); } catch (e) { return null; }
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i].hasAttribute("webkitdirectory")) return list[i];
+    }
+    return null;
+  }
+
+  var MEDIA_LABEL = /^(Media|Медиа|媒体|媒体文件)$/;
+  var PHOTOS_LABEL = /^(Photos & Videos|Фото и видео|照片\/视频|照片图片)$/;
+  var ACTION_LABEL = /^(Mentions|Actions|Browser|Упоминания|Действия|Браузер|提及|操作|浏览器)$/;
+
+  function menuItemOf(el) {
+    if (!el || !el.closest) return null;
+    return el.closest("[role='menuitem'],[role='option']") ||
+      el.closest("[role='menu'] button,[data-testid='bottom-sheet'] button");
+  }
+
+  document.addEventListener("click", function (e) {
+    var item = menuItemOf(e.target);
+    if (!item) return;
+    var label = (item.textContent || "").trim();
+    if (MEDIA_LABEL.test(label)) {
+      var target = composerFileInput();
+      if (target) target.setAttribute("accept", "*/*");
+      return;
+    }
+    if (PHOTOS_LABEL.test(label)) {
+      var targetPhotos = composerFileInput();
+      if (targetPhotos) targetPhotos.setAttribute("accept", "image/*,video/*");
+      return;
+    }
+    /* Mentions / Actions / Browser insert a chip — the user types next, so the
+       keyboard must come back without an extra tap. */
+    if (ACTION_LABEL.test(label)) setTimeout(focusEditor, 140);
+  }, true);
+
+  /* ---- Mention chip (/browser, @file …) is removable -------------------- */
+  var CHIP_SEL = "[data-beautiful-mention],[data-lexical-beautiful-mention]";
+
+  function chipText(chip) {
+    var holder = chip.parentElement && chip.parentElement.closest
+      ? chip.parentElement : chip;
+    return ((holder.textContent || chip.textContent || "")).trim();
+  }
+
+  function removeMentionNode(root, label) {
+    var editor = root.__lexicalEditor;
+    if (!editor || typeof editor.update !== "function") return false;
+    var removed = false;
+    try {
+      editor.update(function () {
+        var map = editor.getEditorState()._nodeMap;
+        var victims = [];
+        map.forEach(function (node) {
+          try {
+            if (node && typeof node.getType === "function" &&
+                node.getType() === "beautifulMention" &&
+                (node.getTextContent() || "").trim() === label) victims.push(node.getKey());
+          } catch (e) {}
+        });
+        for (var i = 0; i < victims.length; i++) {
+          var node = map.get(victims[i]);
+          try { node.remove(); removed = true; } catch (e) {}
+        }
+      }, { discrete: true });
+    } catch (e) { return false; }
+    return removed;
+  }
+
+  function caretAfter(chip, root) {
+    try {
+      var sel = window.getSelection();
+      var r = document.createRange();
+      r.setStartAfter(chip);
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      root.focus({ preventScroll: true });
+    } catch (e) {}
+  }
+
+  function synthKey(root, key, keyCode) {
+    try {
+      root.dispatchEvent(new KeyboardEvent("keydown", {
+        key: key, code: key, keyCode: keyCode, which: keyCode,
+        bubbles: true, cancelable: true
+      }));
+    } catch (e) {}
+  }
+
+  function removeChip(root, chip) {
+    guard = { t: 0, block: false };
+    var label = chipText(chip);
+    if (removeMentionNode(root, label)) { setTimeout(focusEditor, 60); return; }
+    /* Fallback: Lexical's own Backspace handler with the caret right after it. */
+    caretAfter(chip, root);
+    synthKey(root, "Backspace", 8);
+    setTimeout(function () {
+      if (!document.contains(chip)) { setTimeout(focusEditor, 60); return; }
+      caretAfter(chip, root);
+      synthKey(root, "Backspace", 8);
+    }, 130);
+  }
+
+  document.addEventListener("click", function (e) {
+    var chip = e.target && e.target.closest ? e.target.closest(CHIP_SEL) : null;
+    if (!chip) return;
+    var root = chip.closest("[contenteditable='true']");
+    if (!root) return;
+    e.preventDefault();
+    e.stopPropagation();
+    removeChip(root, chip);
+  }, true);
+
+  /* ---- Chat input repaint nudge (No scroll jiggle) ------------------------ */
+  function nudge() {
+    var box = document.querySelector(BOX);
+    if (!box || !box.contains(document.activeElement)) return;
+    compositingAncestors(document.activeElement || box).forEach(repaint);
+  }
+  function nudgeSeries() { [120, 350, 700].forEach(function (ms) { setTimeout(nudge, ms); }); }
+
+  /* Whole-page repaint after returning from a system window */
   var OVERLAY_SEL = '[role="menu"],[role="listbox"],[role="dialog"],[data-select-popup],' +
     '[data-radix-popper-content-wrapper],.typeahead-popover,#typeahead-menu,' +
     '[data-testid="bottom-sheet"],[class*="animate-slideIn"],[class*="animate-in"],.z-\\[6000\\]';
-  function repaintOverlays() {}
-  function nudgePage() {}
+  function repaintOverlays() {
+    var nodes;
+    try { nodes = document.querySelectorAll(OVERLAY_SEL); } catch (e) { return; }
+    for (var i = 0; i < nodes.length; i++) repaint(nodes[i]);
+  }
+  function nudgePage() {
+    repaintOverlays();
+    var ae = document.activeElement;
+    if (ae && ae !== document.body) compositingAncestors(ae).forEach(repaint);
+  }
   var pageTimers = [];
-  function nudgePageSeries() {}
+  function nudgePageSeries() {
+    pageTimers.forEach(clearTimeout);
+    pageTimers = [0, 150, 400, 800].map(function (ms) { return setTimeout(nudgePage, ms); });
+  }
 
+  /* Settings / Providers inputs live inside the settings panel, which is a
+   * transformed (animated) subtree with its own scroll container and compositing
+   * layer. Toggling body opacity does not force that layer to repaint, so the
+   * keyboard can leave a black overlay over the fields. Repaint the field's own
+   * scroll ancestor directly (a 1px scroll jiggle + an opacity/transform no-op). */
   function scrollAncestor(el) {
     for (var p = el && el.parentElement; p; p = p.parentElement) {
       var cs;
@@ -178,8 +537,29 @@
     }
     return document.scrollingElement || document.documentElement;
   }
-  function compositingAncestors() { return []; }
-  function repaint() {}
+  // Ancestors that sit on their own compositing layer (transform/filter/opacity/
+  // fixed) — on this WebView the keyboard can leave that layer's texture black,
+  // and only repainting THAT layer clears it.
+  function compositingAncestors(el) {
+    var out = [];
+    for (var p = el && el.parentElement; p && p !== document.body; p = p.parentElement) {
+      var cs; try { cs = getComputedStyle(p); } catch (e) { continue; }
+      if ((cs.transform && cs.transform !== "none") || (cs.filter && cs.filter !== "none") ||
+          (cs.backdropFilter && cs.backdropFilter !== "none") || /transform|opacity/.test(cs.willChange || "") ||
+          (cs.opacity && cs.opacity !== "1") || cs.position === "fixed" || cs.position === "sticky") out.push(p);
+    }
+    return out;
+  }
+  /* Clear the black GPU texture on an ALREADY-compositing element by forcing it
+   * to re-rasterize. A brief opacity delta does this; 0.999 for two frames is
+   * imperceptible. CRITICAL: only call this on an element that is ALREADY its own
+   * compositing layer (transform/filter/opacity/fixed). Never on <body> or a big
+   * content scroller — toggling opacity there restructures child layers and makes
+   * them flash black ("черные пятна"). That is why the earlier broad version was
+   * wrong: here we repaint ONLY the specific layer that blacked out. */
+  // Do not mutate compositing transforms on live app layers. Concurrent
+  // repaint timers can overwrite an animation or change stacking order.
+  function repaint(n) { if (n) void n.offsetWidth; }
   function revealProviderField(el) {
     if (!el || !el.isConnected || document.activeElement !== el) return;
     var rect = el.getBoundingClientRect();
@@ -268,14 +648,39 @@
       }
     }
   }
-  /* Selects (Base UI select popup): short lists = exactly the trigger width;
-   * lists with descriptions = width of the settings card that holds the row,
-   * aligned to it (never wider than that card). */
+  /* Позиционирование всплывающих окон и списков из архива 03_popup_positioning_engine.js:
+   * Защита от вылета за правый и левый край экрана без ломки ширины и геометрии Base UI. */
+  function compactPoppers() {
+    var popups = document.querySelectorAll(
+      "[role='menu'], [class*='animate-slideIn']:not([data-select-popup])"
+    );
+    var viewW = (window.visualViewport && window.visualViewport.width) || window.innerWidth;
+    for (var i = 0; i < popups.length; i++) {
+      var popup = popups[i];
+      if (popup.closest("[data-testid*='model-selector']") || popup.matches("[data-select-popup]") || popup.closest("[data-select-popup]")) continue;
+      var rect = popup.getBoundingClientRect();
+      if (rect.width < 2 && rect.height < 2) continue;
+      if (rect.right > viewW - 6) {
+        var overflow = rect.right - (viewW - 6);
+        var currentLeft = parseFloat(popup.style.left) || rect.left;
+        popup.style.left = Math.max(6, Math.round(currentLeft - overflow)) + "px";
+      }
+      if (rect.left < 6) {
+        popup.style.left = "6px";
+      }
+    }
+  }
+
+  /* Selects (Base UI select popup):
+   * Списки с описанием пунктов (в Настройках: «Профиль безопасности», «Браузер»)
+   * точно подгоняются по ширине карточки/колонки и выравниваются по ее левому краю,
+   * не выходя за границы. */
   var selTrigger = null, selLoop = 0;
   function selTick() {
     selLoop = 0;
     if (!document.querySelector("[data-select-popup]")) return;
     fitSelects();
+    selLoop = requestAnimationFrame(selTick);
   }
   document.addEventListener("pointerdown", function (e) {
     var t = e.target && e.target.closest ? e.target.closest("[role='combobox'],[aria-haspopup],button") : null;
@@ -285,7 +690,11 @@
     var ps = document.querySelectorAll("[data-select-popup]");
     for (var i = 0; i < ps.length; i++) {
       var p = ps[i];
-      var tr = selTrigger && selTrigger.isConnected ? selTrigger : null;
+      var tr = (selTrigger && selTrigger.isConnected ? selTrigger : null) ||
+               (p.id ? document.querySelector('[aria-controls="' + p.id + '"]') : null) ||
+               (p.querySelector("[role='listbox']") && p.querySelector("[role='listbox']").id ?
+                document.querySelector('[aria-controls="' + p.querySelector("[role='listbox']").id + '"]') : null) ||
+               document.querySelector('[role="combobox"][aria-expanded="true"], button[aria-expanded="true"]');
       if (!tr) continue;
       var opts = p.querySelectorAll("[role='option']");
       var described = false;
@@ -293,28 +702,29 @@
         var lines = (opts[o].innerText || "").split("\n").filter(function (x) { return x.trim(); });
         if (lines.length > 1) { described = true; break; }
       }
-      var tw = tr.getBoundingClientRect();
       if (!described) {
-        p.style.setProperty("width", Math.round(tw.width) + "px", "important");
-        p.style.setProperty("min-width", "0", "important");
-        p.style.setProperty("max-width", "none", "important");
-        p.style.removeProperty("translate"); delete p.dataset.agyDx;
+        p.style.removeProperty("translate");
+        delete p.dataset.agyDx;
         continue;
       }
-      var card = tr.parentElement, vw = window.innerWidth;
+      var card = (tr.closest && (tr.closest(".rounded-xl, .divide-y, [class*='rounded-xl']") || tr.closest(".space-y-2"))) || tr.parentElement, vw = window.innerWidth;
       while (card && card !== document.body) {
         var cs = getComputedStyle(card), r = card.getBoundingClientRect();
         if (r.width >= vw * 0.7 && parseFloat(cs.borderTopWidth) > 0 && parseFloat(cs.borderTopLeftRadius) > 0) break;
         card = card.parentElement;
       }
       var cr = card && card !== document.body ? card.getBoundingClientRect() : { left: 16, width: vw - 32 };
-      p.style.setProperty("width", Math.round(cr.width) + "px", "important");
+      var targetW = Math.round(cr.width);
+      p.style.setProperty("width", targetW + "px", "important");
       p.style.setProperty("min-width", "0", "important");
-      p.style.setProperty("max-width", "none", "important");
+      p.style.setProperty("max-width", targetW + "px", "important");
       var cur = parseFloat(p.dataset.agyDx || "0") || 0;
-      var base = p.getBoundingClientRect().left - cur;      // where floating-ui put it
+      var base = p.getBoundingClientRect().left - cur;      // исходное положение floating-ui
       var dx = Math.round(cr.left - base);
-      if (dx !== cur) { p.dataset.agyDx = String(dx); p.style.setProperty("translate", dx + "px 0", "important"); }
+      if (dx !== cur) {
+        p.dataset.agyDx = String(dx);
+        p.style.setProperty("translate", dx + "px 0", "important");
+      }
     }
   }
 
@@ -326,17 +736,35 @@
     var found = null;
     for (var i = 0; i < bs.length; i++) {
       var t = (bs[i].innerText || bs[i].textContent || "").trim();
-      if (!/(^|\s)(Назад|Back|返回)$/.test(t) && !/^(Назад|Back|返回)$/.test((bs[i].getAttribute("aria-label") || "").trim())) continue;
+      var aria = (bs[i].getAttribute("aria-label") || "").trim();
+      if (!/(^|\s)(Назад|Back)$/i.test(t) && !/^(Назад|Back)$/i.test(aria)) continue;
       var r = bs[i].getBoundingClientRect();
       if (r.width > 0 && r.left >= -1 && r.left < window.innerWidth / 2) found = bs[i];
     }
     return found;
   }
+
+  function isSettingsOpen() {
+    var sheets = document.querySelectorAll("[data-testid='bottom-sheet']");
+    for (var i = 0; i < sheets.length; i++) {
+      var s = sheets[i];
+      if (s.querySelector("[data-testid='bottom-sheet-grabber']")) return true;
+      if (s.querySelector("[data-testid^='settings-nav-item'],[data-testid^='settings-']")) return true;
+      if (s.querySelector(".agy-tools, .agy-tools-host, .agy-providers, .agy-providers-host, .agy-cust, .agy-customizations-host, .agy-mcp, .agy-mcp-host, .agy-backup, .agy-backup-host, .agy-about, .agy-about-host, .agy-feedback-host, .agy-dictation-host")) return true;
+      var tx = s.innerText || "";
+      if (/(Настройки|Settings|Общие|General|Оформление|Appearance|Инструменты|Tools|Резервное|Backup|Провайдер|Provider|Пользователь|Customiz|MCP|Диктовка|Dictation|О приложении|About)/i.test(tx)) return true;
+    }
+    return false;
+  }
+
   /* Called by the native Back handler (button and edge swipe). Returns true
    * when the page handled Back: an open menu/list closes first, otherwise the
-   * open settings page goes one level back. */
+   * open settings page goes one level back, or history goes back one page. */
   window.__agyBack = function () {
     if (window.__agyShieldClose && window.__agyShieldClose()) return true;
+    var subPop = document.getElementById("agy-subagents-popover");
+    if (subPop) { subPop.remove(); return true; }
+
     var open = document.querySelector("[data-select-popup],[class*='animate-slideIn'],#typeahead-menu");
     if (open) {
       (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true }));
@@ -344,25 +772,63 @@
     }
     var btn = sheetBack();
     if (btn) { btn.click(); return true; }
-    // Root settings screen: a side swipe must not close settings (ТЗ 9.4);
+
+    // Root settings screen: an edge swipe must NOT close settings (ТЗ 9.4);
     // they close only with their own control or a swipe down.
-    var sheets = document.querySelectorAll("[data-testid='bottom-sheet']");
-    for (var i = 0; i < sheets.length; i++) {
-      var tx = sheets[i].textContent || "";
-      if (/(Общие|General|常规)/.test(tx) && /(Оформление|Appearance|外观)/.test(tx)) return true;
+    if (isSettingsOpen()) {
+      return true;
+    }
+
+    // Normal navigation: navigate back one page in history
+    if (window.history && window.history.length > 1) {
+      window.history.back();
+      return true;
     }
     return false;
   };
 
+  /* ---- Edge Swipe Back Gesture (left and right edges) --------------------
+   * Swiping from left edge (x < 35px) to right, or right edge (x > window.innerWidth - 35px)
+   * to left triggers navigation back one page. Settings sheet ignores edge swipe. */
+  (function () {
+    var touchStartX = 0, touchStartY = 0, isEdge = false;
+    window.addEventListener("touchstart", function (e) {
+      if (e.touches && e.touches.length === 1) {
+        var x = e.touches[0].clientX;
+        var y = e.touches[0].clientY;
+        touchStartX = x;
+        touchStartY = y;
+        isEdge = (x <= 35 || x >= window.innerWidth - 35);
+      } else {
+        isEdge = false;
+      }
+    }, { passive: true });
+
+    window.addEventListener("touchend", function (e) {
+      if (!isEdge) return;
+      isEdge = false;
+      if (!e.changedTouches || e.changedTouches.length === 0) return;
+      var dx = e.changedTouches[0].clientX - touchStartX;
+      var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+      if (Math.abs(dx) > 55 && dy < 70) {
+        if ((touchStartX <= 35 && dx > 0) || (touchStartX >= window.innerWidth - 35 && dx < 0)) {
+          window.__agyBack();
+        }
+      }
+    }, { passive: true });
+  })();
+
   var popRaf = 0;
   new MutationObserver(function () {
-    if (!popRaf) popRaf = requestAnimationFrame(function () { popRaf = 0; fitPopups(); if (!selLoop) selTick(); });
-  }).observe(document.body || document.documentElement, { childList: true, subtree: true });
+    if (!popRaf) popRaf = requestAnimationFrame(function () { popRaf = 0; fitPopups(); compactPoppers(); if (!selLoop) selTick(); });
+  }).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener("scroll", function () { if (!selLoop && document.querySelector("[data-select-popup]")) selTick(); }, true);
+  window.addEventListener("resize", function () { if (!selLoop && document.querySelector("[data-select-popup]")) selTick(); }, true);
 
   var taRaf = 0;
   new MutationObserver(function () {
     if (!taRaf) taRaf = requestAnimationFrame(function () { taRaf = 0; fitTypeahead(); });
-  }).observe(document.body || document.documentElement, { childList: true, subtree: true });
+  }).observe(document.body, { childList: true, subtree: true });
   window.addEventListener("focus", nudgePageSeries);
   window.addEventListener("pageshow", nudgePageSeries);
   document.addEventListener("load", function (e) {
@@ -406,8 +872,34 @@
    * black while it streams or when expanded. Repaint its compositing layers as it
    * updates. */
   var THINK = "[data-testid='thinking-collapsible-trigger']";
-  function repaintThinking() {}
-  function repaintThinkingSoon() {}
+  function repaintThinking() {
+    var trigs;
+    try { trigs = document.querySelectorAll(THINK); } catch (e) { return; }
+    for (var i = 0; i < trigs.length; i++) {
+      var blk = trigs[i].parentElement; if (!blk) continue;
+      compositingAncestors(trigs[i]).forEach(repaint);
+      var kids = blk.querySelectorAll("*");
+      for (var j = 0; j < kids.length && j < 80; j++) {
+        var cs; try { cs = getComputedStyle(kids[j]); } catch (e) { continue; }
+        if ((cs.transform && cs.transform !== "none") || /(auto|scroll)/.test(cs.overflowY) ||
+            /transform|opacity/.test(cs.willChange || "") || (cs.opacity && cs.opacity !== "1") ||
+            cs.position === "sticky") repaint(kids[j]);
+      }
+    }
+  }
+  var thTimer = 0;
+  function repaintThinkingSoon() {
+    if (thTimer) return;                         // throttle to ~8/sec while streaming
+    thTimer = setTimeout(function () { thTimer = 0; repaintThinking(); }, 120);
+  }
+  new MutationObserver(function () {
+    try { if (document.querySelector(THINK)) repaintThinkingSoon(); } catch (e) {}
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  // Expand / collapse: repaint through the animation.
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (t && t.closest && t.closest(THINK)) { [0, 80, 220, 420].forEach(function (ms) { setTimeout(repaintThinking, ms); }); }
+  }, true);
 
   document.addEventListener("focusin", function (e) {
     var t = e.target;
@@ -453,38 +945,48 @@
   var ITEM = "[role='menuitem'],[role='menuitemradio'],[role='menuitemcheckbox'],[role='option']";
   function sheetKind(sheet, trigger) {
     if (!sheet) return null;
+    // Bottom sheet grabber indicates a modal full-sheet (Settings, Drawers), never a compact popover
+    if (sheet.querySelector("[data-testid='bottom-sheet-grabber']")) return null;
+    if (sheet.querySelector("[data-testid^='settings-nav-item'],[data-testid^='settings-']")) return null;
+    if (sheet.querySelector(".agy-tools, .agy-tools-host, .agy-providers, .agy-providers-host, .agy-cust, .agy-customizations-host, .agy-mcp, .agy-mcp-host, .agy-backup, .agy-backup-host, .agy-about, .agy-about-host, .agy-feedback-host, .agy-dictation-host, .agy-brand-host")) return null;
+    if (trigger && trigger.closest && (trigger.closest("[data-testid^='settings-nav-item']") || trigger.closest("[data-testid='model-selector-trigger']"))) return null;
+
     // Model selector: keep native bottom sheet as in builds prior to 3.0.6
-    if (sheet.querySelector("[data-testid^='model-selector']")) return null;
-    if (trigger && trigger.closest && trigger.closest("[data-testid='model-selector-trigger']")) return null;
-    if (sheet.querySelector("[data-testid='model-quota-refreshing']")) return null;
+    if (sheet.querySelector("[data-testid^='model-selector'],[data-testid='model-selector-panel'],[data-testid='model-quota-refreshing']")) return null;
 
     // Tabs / complex sheets (Settings, Workspace Drawer, Terminal, Files, History, Artifacts)
     if (sheet.querySelector("[role='tablist'], [role='tab']")) return null;
 
-    // Any sheet that contains form inputs, brand/custom hosts, or large content
-    if (sheet.querySelector(".agy-brand-host, .agy-customizations-host, select, input[type='range']")) return null;
+    // Any sheet that contains form inputs
     if (sheet.querySelector("input:not([type='checkbox']):not([type='radio']),textarea,[contenteditable='true']")) return null;
 
     var txt = (sheet.textContent || "").trim();
     if (txt.length > 220) return null;
-    if (/^(?:(?:Назад|Back|返回)\s*)?(Настройки|Settings|设置|Оформление|Appearance|外观|Субагенты|Subagents|子智能体|子代理|Файлы|Files|文件|Терминал|Terminal|终端|История|History|历史|Артефакты|Artifacts|产物|Изменённые|Modified|已修改|账号|Account)/i.test(txt)) return null;
+    if (/^(Настройки|Settings|Оформление|Appearance|Провайдер|Поставщик|Provider|Пользователь|Customiz|MCP|Инструмент|Tools|Резерв|Backup|О приложении|About|Субагенты|Subagents|Файлы|Files|Терминал|Terminal|История|History|Артефакты|Artifacts|Изменённые|Modified|设置|外观|服务商|自定义|工具|备份|关于|子代理|子智能体|文件|终端|历史|产物|已修改)/i.test(txt)) return null;
 
     var btns = sheet.querySelectorAll("button, [role='menuitem'], [role='option']");
-    if (btns.length === 0 || btns.length > 8) return null;
+    if (btns.length === 0 || btns.length > 9) return null;
 
     if (sheet.querySelector("[role='option'],[role='menuitemradio']")) return "select";
     if (sheet.querySelector(ITEM)) return "menu";
-    if (!sheet.style.height && btns.length <= 8 && txt.length < 220) return "menu";
+    if (!sheet.style.height && btns.length <= 9 && txt.length < 220) return "menu";
     return null;
   }
 
   function lines(el) {
+    /* textContent вместо innerText: innerText принудительно пересчитывает
+       layout (рефлоу) и вызывал подтормаживание при открытии медиа-меню. */
     return (el.textContent || "").split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
   }
 
   function layoutCompact() {
+    /* Ранний выход: если bottom-sheet нет в DOM, ничего не делаем —
+       избегаем лишних querySelectorAll/getComputedStyle на каждую мутацию. */
+    if (!document.querySelector("[data-testid='bottom-sheet']")) {
+      if (sheetTriggers.size) sheetTriggers.clear();
+      return;
+    }
     var sheets = document.querySelectorAll("[data-testid='bottom-sheet']");
-    if (!sheets.length) return;
     var backs = document.querySelectorAll("[data-testid='bottom-sheet-backdrop']");
     var compactBacks = new Set();
     for (var i = 0; i < sheets.length; i++) {
@@ -495,6 +997,13 @@
         if (sh.classList.contains("agy-compact-sheet")) {
           sh.classList.remove("agy-compact-sheet", "agy-tight-menu", "agy-model-menu");
           ["left", "top", "bottom", "width", "max-height", "transform"].forEach(function (k) { sh.style.removeProperty(k); });
+        }
+        if (sh.querySelector("[data-testid^='model-selector'],[data-testid='model-selector-panel'],[data-testid='model-quota-refreshing']")) {
+          var mLayer = sh.parentElement;
+          var mz = mLayer ? parseInt(getComputedStyle(mLayer).zIndex, 10) : NaN;
+          for (var mk = 0; mk < backs.length; mk++) {
+            if (backs.length === 1 || parseInt(getComputedStyle(backs[mk]).zIndex, 10) === mz - 1) compactBacks.add(backs[mk]);
+          }
         }
         continue;
       }
@@ -550,17 +1059,13 @@
   }
   var compactRaf = 0;
   function scheduleCompact() { if (!compactRaf) compactRaf = requestAnimationFrame(function () { compactRaf = 0; layoutCompact(); }); }
-  new MutationObserver(function (mutations) {
-    for (var i = 0; i < mutations.length; i++) {
-      if (mutations[i].addedNodes.length || mutations[i].removedNodes.length) {
-        scheduleCompact();
-        break;
-      }
-    }
-  }).observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver(scheduleCompact).observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener("resize", scheduleCompact, { passive: true });
+  window.addEventListener("scroll", scheduleCompact, { passive: true });
+  document.addEventListener("scroll", scheduleCompact, { passive: true, capture: true });
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", scheduleCompact, { passive: true });
+    window.visualViewport.addEventListener("scroll", scheduleCompact, { passive: true });
   }
   if (window.ResizeObserver) {
     var composerObserver = new ResizeObserver(scheduleCompact);
@@ -598,7 +1103,7 @@
   var SYS = window.AgySTT || null;                   // system recognizer (fallback)
   if (!VOSK && !SYS) return;
   var BOX = "[data-testid='agent-input-box']";
-  var MIC_SEL = 'button[aria-label="Record voice memo"],button[aria-label="Stop recording"],button[aria-label="Записать голосовое сообщение"],button[aria-label="Остановить запись"]';
+  var MIC_SEL = 'button[aria-label="Record voice memo"],button[aria-label="Stop recording"],button[aria-label="Записать голосовое сообщение"],button[aria-label="Остановить запись"],button[aria-label="录制语音消息"],button[aria-label="停止录音"]';
   var listening = false, pollTimer = null, liveBtn = null, lastPartial = "", gotFinal = false;
   var curEng = null, sawEvent = false, wdTimer = 0;
 
@@ -686,13 +1191,15 @@
   function dictCfg() { try { return (window.__agyDictationCfg && window.__agyDictationCfg()) || {}; } catch (e) { return {}; } }
   function uiLang() {
     // Dictation language: the explicit choice from the Dictation tab, else the
-    // app's UI language (agy_i18n sets <html data-agy-language="ru|en">).
+    // app's UI language (agy_i18n sets <html data-agy-language="zh|ru|en">).
     var c = dictCfg();
+    if (c.lang === "zh") return "zh-CN";
     if (c.lang === "ru") return "ru-RU";
     if (c.lang === "en") return "en-US";
     var l;
-    try { l = (document.documentElement.getAttribute("data-agy-language") || "ru").toLowerCase(); } catch (e) { l = "ru"; }
-    return l.indexOf("en") === 0 ? "en-US" : "ru-RU";
+    try { l = (document.documentElement.getAttribute("data-agy-language") || "en").toLowerCase(); } catch (e) { l = "en"; }
+    if (l.indexOf("zh") === 0) return "zh-CN";
+    return l.indexOf("ru") === 0 ? "ru-RU" : "en-US";
   }
   function pickEngine() {
     // Engine from the Dictation tab: system / vosk / auto (Vosk if present).
@@ -783,24 +1290,27 @@
     scheduled = false;
     if (!document.body) return;
 
-    // Check all dialogs, modals, banners, alerts
+    // Check only small standalone notice dialogs/alerts, never bottom-sheets or settings pages
     var candidates = document.querySelectorAll(
-      '[role="dialog"], [role="alertdialog"], [data-radix-portal], [data-state="open"], .fixed, .absolute'
+      '[role="dialog"], [role="alertdialog"], [data-radix-portal]'
     );
     for (var k = 0; k < candidates.length; k++) {
       var node = candidates[k];
+      if (
+        node.getAttribute('data-testid') === 'bottom-sheet' ||
+        node.closest('[data-testid="bottom-sheet"], [data-testid="agent-input-box"], .agy-providers, .agy-cust, .agy-mcp, .agy-tools, .agy-backup, .agy-about') ||
+        node.querySelector('[data-testid="bottom-sheet"], [data-testid^="settings-"], .agy-providers, .agy-cust, .agy-mcp, .agy-tools, .agy-backup, .agy-about')
+      ) {
+        continue;
+      }
       var text = (node.textContent || '').toLowerCase();
-      var hasModelNotice = (
-        (text.indexOf('opus 5.5') >= 0 || text.indexOf('sonnet 5.5') >= 0 || text.indexOf('claude') >= 0) &&
-        (text.indexOf('2 ноября') >= 0 || text.indexOf('november 2') >= 0 || text.indexOf('2026') >= 0 || text.indexOf('сторонн') >= 0 || text.indexOf('third-party') >= 0)
-      ) || (
-        text.indexOf('доступ к сторонним моделям') >= 0 ||
-        text.indexOf('third-party model access') >= 0
-      );
+      if (text.length > 450) continue;
+      var hasModelNotice =
+        (text.indexOf('opus 5.5') >= 0 || text.indexOf('sonnet 5.5') >= 0) &&
+        (text.indexOf('2 ноября') >= 0 || text.indexOf('november 2') >= 0);
       if (!hasModelNotice) continue;
 
-      // Find the closest dialog container or portal
-      var container = node.closest('[role="dialog"], [role="alertdialog"], [data-radix-portal]') || node;
+      var container = node;
 
       // Click close / ok / dismiss button
       var btns = container.querySelectorAll('button');
@@ -809,14 +1319,14 @@
         var b = btns[i];
         if (seen.has(b)) continue;
         var lbl = (b.textContent || b.getAttribute('aria-label') || b.getAttribute('title') || '').trim().toLowerCase();
-        if (/^(понятно|ok|ок|закрыть|close|dismiss|got it|хорошо|продолжить|continue)$/i.test(lbl) || b.querySelector('svg')) {
+        if (/^(понятно|ok|ок|закрыть|close|dismiss|got it|хорошо|продолжить|continue)$/i.test(lbl)) {
           seen.add(b);
           try { b.click(); } catch (e) {}
           clicked = true;
           break;
         }
       }
-      if (!clicked && btns.length > 0 && !seen.has(btns[0])) {
+      if (!clicked && btns.length === 1 && !seen.has(btns[0])) {
         seen.add(btns[0]);
         try { btns[0].click(); } catch (e) {}
       }
@@ -824,14 +1334,6 @@
       // Hide container immediately to prevent flashing
       container.style.display = 'none';
       container.setAttribute('aria-hidden', 'true');
-
-      // Also hide accompanying backdrop
-      var overlays = document.querySelectorAll('[data-radix-focus-guard], [data-aria-hidden="true"], .fixed.inset-0');
-      for (var oi = 0; oi < overlays.length; oi++) {
-        if (overlays[oi] !== container && overlays[oi].classList.contains('bg-black/50')) {
-          overlays[oi].style.display = 'none';
-        }
-      }
     }
   }
 
@@ -916,8 +1418,11 @@
     return ok;
   };
 
+  var lastShadeTime = 0;
   window.__agyOnShadeReply = function(payload) {
     if (!payload) return;
+    if (payload.time && payload.time === lastShadeTime) return;
+    if (payload.time) lastShadeTime = payload.time;
     var text = payload.text || "";
     var isApprove = (payload.type === "approve" || text === "__AGY_APPROVE__");
 
@@ -928,33 +1433,154 @@
         var tid = b.getAttribute("data-testid") || "";
         if (tid === "run-button" || tid === "accept-action-button" || tid === "approve-button") return true;
         var t = (b.textContent || "").trim().toLowerCase();
-        return /^(разрешить|выполнить|продолжить|run|allow|always allow|accept)$/i.test(t);
+        return /^(разрешить|разрешить один раз|разрешить всегда|выполнить|продолжить|run|allow|allow once|always allow|accept|允许|仅允许本次执行|始终允许|运行|运行命令|执行|继续|接受|批准|提交)$/i.test(t);
       });
       if (approveBtn) {
         approveBtn.click();
-        return;
       }
-      text = "Разрешить / Продолжить";
+      return;
     }
-    window.__agyInsertIntoChat(text, true);
+
+    if (text && text !== "__AGY_APPROVE__") {
+      window.__agyInsertIntoChat(text, true);
+    }
   };
 
-  /* -------------------------------------------------------------------------- */
-  /* Subagents Chat Quick Launcher (Release 3.0.9)                              */
-  /* -------------------------------------------------------------------------- */
+  /* Poll notifications replies from Android shade */
+  setInterval(function () {
+    try {
+      if (window.AgyShade && typeof window.AgyShade.pollReplies === "function") {
+        var res = window.AgyShade.pollReplies();
+        if (res && res !== "[]") {
+          var arr = JSON.parse(res);
+          for (var i = 0; i < arr.length; i++) {
+            window.__agyOnShadeReply(arr[i]);
+          }
+        }
+      }
+    } catch (e) {}
+  }, 1200);
+
+  /* Watch for approval prompts and agent responses to post Android notifications */
+  var lastNotifiedApproval = 0;
+  var lastApprovalSnippet = "";
+  var lastNotifiedMessage = "";
+  var lastProgressNotify = 0;
+  var progressNotifiedThisRun = false;
+  var progressRunningLast = false;
+  // Shield "Не спрашивать" (auto) mode = terminal auto-execution EAGER (3)
+  // in the agyShieldOv mirror. In that mode no approval notification should
+  // ever be sent — at most a passive progress message.
+  function shieldAutoMode() {
+    try {
+      var o = JSON.parse(window.localStorage.getItem("agyShieldOv") || "{}");
+      return !!o && o.term === 3;
+    } catch (e) { return false; }
+  }
+  function checkAgentActivity() {
+    try {
+      if (!window.AgyShade || typeof window.AgyShade.notify !== "function") return;
+      if (!document.hidden && window.AgyShade.cancel) {
+        try { window.AgyShade.cancel("agent_progress"); window.AgyShade.cancel("agent_approval"); } catch (e) {}
+      }
+
+      // 1. Approval requests: buttons exist only when the Shield requires confirmation.
+      //    Notify (with action) ONLY when the app is minimized; in foreground the user sees it.
+      var btns = document.hidden ? Array.from(document.querySelectorAll("button")) : [];
+      var approveBtn = null;
+      if (!shieldAutoMode()) {
+        approveBtn = btns.find(function (b) {
+          if (b.disabled) return false;
+          if (b.closest("[data-testid='bottom-sheet'],.agy-providers,.agy-cust,.agy-mcp,.agy-tools")) return false;
+          var t = (b.textContent || "").trim().toLowerCase();
+          return /^(разрешить|разрешить один раз|разрешить всегда|allow|allow once|always allow|yes, allow once|yes, allow this time|仅允许本次执行|始终允许|允许)$/i.test(t) ||
+            b.getAttribute("data-testid") === "run-button" || b.getAttribute("data-testid") === "accept-action-button";
+        });
+      }
+
+      if (approveBtn) {
+        var now = Date.now();
+        var container = approveBtn.closest("[class*='step'],[class*='card'],[role='dialog']") || approveBtn.parentElement;
+        var textSnippet = container ? (container.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160) : subTxt("Требуется подтверждение действия агента", "Agent action confirmation required", "需要确认代理操作");
+        // Deduplicate by snippet: the same pending approval notifies ONCE.
+        // Re-allow the same snippet only after 5 minutes (user dismissed it).
+        if (textSnippet !== lastApprovalSnippet || (now - lastNotifiedApproval > 300000)) {
+          lastApprovalSnippet = textSnippet;
+          lastNotifiedApproval = now;
+          window.AgyShade.notify("agent_approval", subTxt("Antigravity — Требуется подтверждение", "Antigravity — Action Required", "Antigravity — 需要确认操作"), textSnippet, true);
+        }
+      } else if (document.hidden) {
+        // Approval resolved (or none pending): drop stale approval / progress notifications.
+        if (lastApprovalSnippet) {
+          lastApprovalSnippet = "";
+          try { if (window.AgyShade.cancel) window.AgyShade.cancel("agent_approval"); } catch (e) {}
+        }
+        try { if (window.AgyShade.cancel) window.AgyShade.cancel("agent_progress"); } catch (e) {}
+      }
+
+      // 2. Detect Agent Response completion (when user is in background)
+      if (document.hidden) {
+        var responses = document.querySelectorAll("[data-testid='agent-turn'],[class*='agent-message'],[data-testid='cascade-step']");
+        if (responses.length > 0) {
+          var lastResp = responses[responses.length - 1];
+          var respText = (lastResp.textContent || "").replace(/\s+/g, " ").trim();
+          if (respText && respText !== lastNotifiedMessage && respText.length > 10) {
+            var isStreaming = !!lastResp.querySelector("[class*='animate-spin'],.spinner,[data-testid='spinner']");
+            if (!isStreaming) {
+              lastNotifiedMessage = respText;
+              var snippet = respText.slice(0, 150) + (respText.length > 150 ? "..." : "");
+              window.AgyShade.notify("agent_reply", subTxt("Antigravity — Ответ агента", "Antigravity — Agent Reply", "Antigravity — 代理回复"), snippet, false);
+            }
+          }
+        }
+      }
+    } catch (e) {}
+  }
+  setInterval(checkAgentActivity, 2000);
+  var SVG_ICONS = {
+    bot: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>',
+    search: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+    bug: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>',
+    code: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+    doc: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>',
+    shield: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>',
+    test: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></svg>',
+    image: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
+    cpu: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>'
+  };
+
+  function subLang() {
+    try { return (window.__agyI18n && window.__agyI18n.getLanguage()) || document.documentElement.getAttribute("data-agy-language") || "en"; }
+    catch (e) { return "en"; }
+  }
+  function subTxt(ru, en, zh) {
+    var l = subLang();
+    if (l === "zh") return zh || en;
+    if (l === "ru") return ru;
+    return en;
+  }
+
   var CHAT_SUBAGENTS = [
-    { id: "self", name: "self", title: "当前智能体", desc: "继承当前上下文与工具", icon: "🤖" },
-    { id: "research", name: "research", title: "研究员", desc: "在代码库与网络中深度检索", icon: "🔍" },
-    { id: "android-debugger", name: "android-debugger", title: "Android 调试器", desc: "崩溃分析、logcat、JNI、jadx-agy", icon: "🐞" },
-    { id: "code-reviewer", name: "code-reviewer", title: "代码审查", desc: "查找潜在 Bug 与内存泄漏", icon: "🔎" },
-    { id: "docs-architect", name: "docs-architect", title: "文档架构师", desc: "生成 README、CHANGELOG、Mermaid", icon: "📝" },
-    { id: "security-auditor", name: "security-auditor", title: "安全审计员", desc: "OWASP Top 10 与安全漏洞扫描", icon: "🛡️" },
-    { id: "test-engineer", name: "test-engineer", title: "测试工程师", desc: "编写单元测试与集成测试", icon: "🧪" },
-    { id: "image-generator", name: "image-generator", title: "图像生成器", desc: "创建与编辑图像素材", icon: "🎨" }
+    { id: "self", name: "self", ruTitle: "Текущий агент", enTitle: "Current agent", zhTitle: "当前主代理", ruDesc: "Копия контекста и инструментов", enDesc: "Clone current context & tools", zhDesc: "继承当前对话上下文与全部工具", svg: SVG_ICONS.bot },
+    { id: "research", name: "research", ruTitle: "Исследователь", enTitle: "Researcher", zhTitle: "代码与网络研究员", ruDesc: "Поиск в кодовой базе и сети", enDesc: "Search codebase and the web", zhDesc: "深入检索代码库与互联网资料", svg: SVG_ICONS.search },
+    { id: "android-debugger", name: "android-debugger", ruTitle: "Android отладчик", enTitle: "Android Debugger", zhTitle: "Android 调试专家", ruDesc: "Краши, logcat, JNI, jadx-agy", enDesc: "Crashes, logcat, JNI, jadx-agy", zhDesc: "崩溃分析、logcat、JNI 与反编译调试", svg: SVG_ICONS.bug },
+    { id: "code-reviewer", name: "code-reviewer", ruTitle: "Код-ревью", enTitle: "Code Reviewer", zhTitle: "代码审查员", ruDesc: "Поиск багов и утечек памяти", enDesc: "Bugs, races and memory leaks", zhDesc: "排查潜在 Bug、并发问题与内存泄漏", svg: SVG_ICONS.code },
+    { id: "docs-architect", name: "docs-architect", ruTitle: "Архитектор доков", enTitle: "Docs Architect", zhTitle: "文档架构师", ruDesc: "README, CHANGELOG, Mermaid", enDesc: "README, CHANGELOG, Mermaid", zhDesc: "编写维护 README、更新日志与架构图", svg: SVG_ICONS.doc },
+    { id: "security-auditor", name: "security-auditor", ruTitle: "Аудитор безопасности", enTitle: "Security Auditor", zhTitle: "安全审计员", ruDesc: "OWASP Top 10, уязвимости", enDesc: "OWASP Top 10 & vulnerabilities", zhDesc: "排查 OWASP Top 10 风险与安全漏洞", svg: SVG_ICONS.shield },
+    { id: "test-engineer", name: "test-engineer", ruTitle: "Инженер тестов", enTitle: "Test Engineer", zhTitle: "测试工程师", ruDesc: "Модульные и интеграционные тесты", enDesc: "Unit and integration tests", zhDesc: "编写并执行单元测试与集成测试", svg: SVG_ICONS.test },
+    { id: "image-generator", name: "image-generator", ruTitle: "Генератор картинок", enTitle: "Image Generator", zhTitle: "图像生成助手", ruDesc: "Создание и редактирование изображений", enDesc: "Create and edit images", zhDesc: "生成与编辑应用图片及视觉素材", svg: SVG_ICONS.image }
   ];
 
   function getSubagentsCatalog() {
-    var list = CHAT_SUBAGENTS.slice();
+    var list = CHAT_SUBAGENTS.map(function (it) {
+      return {
+        id: it.id,
+        name: it.name,
+        title: subTxt(it.ruTitle, it.enTitle, it.zhTitle),
+        desc: subTxt(it.ruDesc, it.enDesc, it.zhDesc),
+        svg: it.svg
+      };
+    });
     try {
       var raw = localStorage.getItem("agyCustomSubagents");
       if (raw) {
@@ -962,7 +1588,7 @@
         if (Array.isArray(extra)) {
           extra.forEach(function (x) {
             if (x && x.name && !list.some(function (i) { return i.name === x.name; })) {
-              list.push({ id: x.name, name: x.name, title: x.title || x.name, desc: x.desc || "自定义子智能体", icon: "⚡" });
+              list.push({ id: x.name, name: x.name, title: x.title || x.name, desc: x.desc || subTxt("Кастомный субагент", "Custom subagent", "自定义子代理"), svg: SVG_ICONS.cpu });
             }
           });
         }
@@ -976,29 +1602,41 @@
     if (old) old.remove();
   }
 
+  function placeSubagentsMenu(pop) {
+    if (!pop) return;
+    var box = document.querySelector(BOX);
+    if (!box) { closeSubagentsMenu(); return; }
+    var r = box.getBoundingClientRect();
+    var vw = window.innerWidth || document.documentElement.clientWidth;
+    var w = Math.min(r.width, vw - 8);
+    var left = Math.max(4, Math.min(r.left, vw - w - 4));
+    pop.style.setProperty("width", Math.round(w) + "px", "important");
+    pop.style.setProperty("max-width", Math.round(w) + "px", "important");
+    pop.style.setProperty("min-width", Math.round(w) + "px", "important");
+    pop.style.setProperty("left", Math.round(left) + "px", "important");
+    pop.style.setProperty("right", "auto", "important");
+    pop.style.setProperty("top", "auto", "important");
+    pop.style.setProperty("bottom", Math.round(window.innerHeight - r.top + 6) + "px", "important");
+    pop.style.setProperty("max-height", Math.max(160, Math.round(r.top - 64)) + "px", "important");
+  }
+
   function toggleSubagentsMenu(anchorBtn) {
     var existing = document.getElementById("agy-subagents-popover");
     if (existing) { existing.remove(); return; }
 
     var pop = document.createElement("div");
     pop.id = "agy-subagents-popover";
-    pop.style.cssText = "position:fixed;z-index:9000;width:min(320px,calc(100vw - 20px));max-height:min(360px,calc(100vh - 120px));" +
-      "background:var(--agy-glass-surface, rgba(26,26,30,.88));border:1px solid var(--agy-glass-border, rgba(255,255,255,.14));" +
-      "border-radius:16px;box-shadow:var(--agy-glass-shadow, 0 16px 40px rgba(0,0,0,.4));" +
-      "backdrop-filter:blur(22px) saturate(190%);-webkit-backdrop-filter:blur(22px) saturate(190%);" +
+    pop.setAttribute("data-agy-no-translate", "");
+    pop.style.cssText = "position:fixed;z-index:9000;" +
+      "background:var(--agy-glass-surface);border:1px solid var(--agy-glass-border);" +
+      "border-radius:16px;box-shadow:var(--agy-glass-shadow);" +
       "padding:10px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;box-sizing:border-box";
-
-    var r = anchorBtn.getBoundingClientRect();
-    var vw = window.innerWidth, vh = window.innerHeight;
-    var top = Math.max(10, r.top - 370);
-    var left = Math.max(10, Math.min(r.left - 10, vw - 330));
-    pop.style.top = top + "px";
-    pop.style.left = left + "px";
 
     var hdr = document.createElement("div");
     hdr.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:4px 6px 8px;" +
       "border-bottom:1px solid rgba(127,127,127,.18);margin-bottom:4px;font-size:13px;font-weight:600;color:var(--foreground,#eee)";
-    hdr.innerHTML = "<span>🤖 子智能体</span><span style='font-size:11px;font-weight:400;color:#888'>点击插入调用</span>";
+    hdr.innerHTML = "<span style='display:inline-flex;align-items:center;gap:6px'>" + SVG_ICONS.bot + "<span>" + subTxt("Субагенты", "Subagents", "子代理") + "</span></span>" +
+      "<span style='font-size:11px;font-weight:400;color:#888'>" + subTxt("нажмите для вызова", "tap to insert", "点击插入") + "</span>";
     pop.appendChild(hdr);
 
     var list = getSubagentsCatalog();
@@ -1012,8 +1650,8 @@
       item.onmouseleave = function () { item.style.background = "transparent"; };
 
       var ic = document.createElement("span");
-      ic.style.cssText = "font-size:16px;line-height:1;flex-shrink:0";
-      ic.textContent = ag.icon;
+      ic.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var(--primary,#0b84ff);flex-shrink:0";
+      ic.innerHTML = ag.svg || SVG_ICONS.bot;
       item.appendChild(ic);
 
       var txtWrap = document.createElement("div");
@@ -1045,7 +1683,13 @@
     });
 
     document.body.appendChild(pop);
+    placeSubagentsMenu(pop);
   }
+
+  window.addEventListener("resize", function () {
+    var p = document.getElementById("agy-subagents-popover");
+    if (p) placeSubagentsMenu(p);
+  });
 
   document.addEventListener("pointerdown", function (e) {
     var p = document.getElementById("agy-subagents-popover");
@@ -1060,49 +1704,192 @@
     var box = document.querySelector(BOX);
     if (!box) return;
 
-    // Try multiple selectors for the '+' / attach button
-    var anchor = box.querySelector(
-      "[aria-label='Add context'],[aria-label='Добавить контекст']," +
-      "[aria-label='Add attachment'],[aria-label='Прикрепить файл']," +
-      "[aria-label='Attach'],[aria-label='Upload']," +
-      "[data-testid='attach-button'],[data-testid='add-context-button']"
-    );
-    // Fall back to first visible button in the box
-    if (!anchor) {
-      var allBtns = box.querySelectorAll("button");
-      for (var bi = 0; bi < allBtns.length; bi++) {
-        var b = allBtns[bi];
-        if (b.offsetHeight > 0 && b.offsetWidth > 0) { anchor = b; break; }
-      }
-    }
-    if (!anchor || !anchor.parentElement) return;
+    var plus = box.querySelector("[aria-label='Add context'],[aria-label='Добавить контекст'],[aria-label='添加上下文'],[data-testid='attach-button']");
+    var footer = plus ? plus.closest("[class*='input-footer']") : box.querySelector("[class*='input-footer']");
+    if (!footer) return;
+    var group = footer.lastElementChild;
+    if (!group) return;
 
     var btn = document.createElement("button");
     btn.type = "button";
     btn.id = "agy-subagent-btn";
-    btn.title = "子智能体 (在对话中调用)";
-    btn.setAttribute("aria-label", "子智能体");
-    btn.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;" +
-      "padding:0;border:0;border-radius:8px;background:transparent;cursor:pointer;font-size:16px;line-height:1;" +
-      "color:var(--foreground,#aaa);transition:color .15s, transform .12s;flex-shrink:0";
-    btn.innerHTML = "🤖";
-    btn.onmouseenter = function () { btn.style.transform = "scale(1.08)"; };
-    btn.onmouseleave = function () { btn.style.transform = ""; };
-    btn.onclick = function (e) {
+    btn.title = subTxt("Субагенты (вызов в чате)", "Subagents (call in chat)", "子代理（在聊天中调用）");
+    btn.setAttribute("aria-label", subTxt("Субагенты", "Subagents", "子代理"));
+    btn.className = "agy-subagent-btn p-1.5 rounded-full text-secondary-foreground hover:bg-secondary cursor-pointer";
+    btn.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;" +
+      "padding:0;border:0;border-radius:9999px;background:transparent;cursor:pointer;line-height:1;" +
+      "color:var(--secondary-foreground, currentColor);flex-shrink:0;transition:background-color .15s, color .15s";
+    btn.innerHTML = SVG_ICONS.bot;
+    btn.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      guard = { t: Date.now(), block: true };
+      var ae = document.activeElement;
+      if (ae && isEditor(ae)) { try { ae.blur(); } catch (_) {} }
+    });
+    btn.addEventListener("click", function (e) {
       e.preventDefault();
       e.stopPropagation();
       toggleSubagentsMenu(btn);
-    };
-    anchor.parentElement.insertBefore(btn, anchor.nextSibling);
+    });
+
+    var shield = group.querySelector(".agy-shield-btn");
+    if (shield) group.insertBefore(btn, shield);
+    else group.insertBefore(btn, group.firstChild);
   }
 
-  setInterval(attachSubagentButton, 800);
-  // Also watch DOM for SPA route changes / re-renders
-  (function () {
-    var attached = false;
-    new MutationObserver(function () { attachSubagentButton(); }).observe(
-      document.body || document.documentElement,
-      { childList: true, subtree: true }
-    );
+  setInterval(attachSubagentButton, 600);
+
+  /* ---- Background Keep-Alive for Uninterrupted Chat & Agent Execution ------
+   * When the user minimizes the app, Chromium WebView on Android throttles
+   * timers and suspends streaming fetch/SSE connections unless an active media
+   * session is present.
+   * We maintain a silent HTML5 audio loop while generation/chat is active.
+   * This signals Android/Chromium to keep the renderer alive, preventing
+   * chat disconnects or streaming aborts when the app is in the background. */
+  var bgAudio = null;
+  var isKeepAliveActive = false;
+  var lastUserActivity = 0;
+
+  /* A user who touched the app within this window may still have an agent run
+     in flight — or, more importantly, may just have put the phone down with the
+     screen about to lock. Keeping the audio session armed for that long is
+     essentially free (silent, volume 0.001) and removes the dependence on
+     fragile DOM probing. */
+  var PROTECT_WINDOW_MS = 30 * 60 * 1000;
+
+  function markUserActivity() {
+    lastUserActivity = Date.now();
+  }
+
+  /* Detection against the real shipped bundle (generated/main.js):
+       data-tooltip-id="input-send-button-cancel-tooltip"  – cancel/stop button
+       data-testid="send-button-pending"                   – request in flight
+     The remaining selectors are defensive fallbacks for other bundle versions
+     and for the RU localisation. */
+  function isChatRunning() {
+    try {
+      if (document.querySelector(
+        "[data-tooltip-id='input-send-button-cancel-tooltip']," +
+        "[data-tooltip-id='input-send-button-cancel']," +
+        "[data-testid='send-button-pending']," +
+        "[aria-label='Stop'],[aria-label='Остановить']," +
+        "[aria-label='Cancel'],[aria-label='Отмена']," +
+        "[data-state='streaming'],[data-streaming='true']," +
+        ".agy-streaming-indicator")) {
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function shouldProtect() {
+    if (isChatRunning()) return true;
+    if (!lastUserActivity) return false;
+    return (Date.now() - lastUserActivity) < PROTECT_WINDOW_MS;
+  }
+
+  function startKeepAlive() {
+    if (isKeepAliveActive) return;
+    try {
+      if (!bgAudio) {
+        bgAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+        bgAudio.loop = true;
+        bgAudio.volume = 0.001;
+      }
+      isKeepAliveActive = true;
+      var p = bgAudio.play();
+      if (p && p.catch) p.catch(function () { isKeepAliveActive = false; });
+    } catch (e) {
+      isKeepAliveActive = false;
+    }
+  }
+
+  function stopKeepAlive() {
+    if (!isKeepAliveActive) return;
+    try {
+      if (bgAudio) bgAudio.pause();
+    } catch (e) {}
+    isKeepAliveActive = false;
+  }
+
+  function checkBackgroundState() {
+    if (document.hidden) {
+      /* Arm unconditionally on hide: a process kill loses the chat whether or
+         not the stop button happened to be mounted at that instant. */
+      markUserActivity();
+      startKeepAlive();
+    } else if (isChatRunning()) {
+      startKeepAlive();
+    } else if (isKeepAliveActive) {
+      stopKeepAlive();
+    }
+  }
+
+  document.addEventListener("visibilitychange", checkBackgroundState);
+  document.addEventListener("pointerdown", markUserActivity, true);
+  document.addEventListener("keydown", markUserActivity, true);
+  document.addEventListener("input", markUserActivity, true);
+
+  /* First paint: the user is obviously present, open the protection window. */
+  markUserActivity();
+
+  setInterval(function () {
+    if (isKeepAliveActive) return;
+    if (document.hidden && shouldProtect()) startKeepAlive();
+  }, 1500);
+
+  /* ---- Return from background / screen lock -------------------------------
+   * The host dispatches `agy:host-resume` from WebViewLifecycle.resume(). After
+   * a screen-off the silent media session is usually torn down by the system,
+   * so the next background period would lose its protection. Re-arm it, and
+   * nudge the reconnectable streams (`$i` in main.js retries every 1s, but its
+   * timer can be throttled while the page is hidden). */
+  function recoverAfterBackground() {
+    markUserActivity();
+    if (document.hidden || shouldProtect()) startKeepAlive();
+    try { window.dispatchEvent(new Event("online")); } catch (e) {}
+  }
+  window.addEventListener("agy:host-resume", recoverAfterBackground);
+  document.addEventListener("resume", recoverAfterBackground);
+  window.addEventListener("focus", recoverAfterBackground);
+  window.addEventListener("pageshow", recoverAfterBackground);
+
+  /* ---- Battery optimisation (Doze) bootstrap ------------------------------
+   * With an active screen-off Doze the OS blocks the app's network, the
+   * core↔gateway stream stalls and the running session is dropped. The native
+   * `power` op whitelists the app through Shizuku when it is available, and
+   * always reports the state to the log so the cause is diagnosable. Runs at
+   * most once every 6 hours, silently. */
+  (function ensurePowerExemption() {
+    var KEY = "agyPowerExemptCheck", SIX_H = 6 * 60 * 60 * 1000;
+    try {
+      if (Date.now() - parseInt(localStorage.getItem(KEY) || "0", 10) < SIX_H) return;
+    } catch (e) { return; }
+    var bridge = window.AgyTools;
+    if (!bridge || typeof bridge.start !== "function" || typeof bridge.read !== "function") return;
+    var job = "";
+    try { job = bridge.start("power", ""); } catch (e) { return; }
+    if (!job || /^ERR/.test(job)) return;
+    try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {}
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      var res = {};
+      try { res = JSON.parse(bridge.read(job) || "{}"); } catch (e) {}
+      var done = res && res.rc !== undefined && res.rc !== "";
+      if (!done && tries < 20) return;
+      clearInterval(timer);
+      var log = (res && res.log) || "";
+      var m = /whitelisted=([A-Za-z-]+)/.exec(log);
+      var st = m ? m[1] : "";
+      if (st === "no") {
+        console.warn("[AGY power] Battery optimisation is ON for the app: " +
+          "background sessions may drop when the screen turns off.");
+      } else if (st && st !== "yes") {
+        console.warn("[AGY power] Battery optimisation state unavailable (" + st + ").");
+      }
+    }, 700);
   })();
+
+  try { sessionStorage.removeItem("agy_composer_draft"); } catch (e) {}
 })();

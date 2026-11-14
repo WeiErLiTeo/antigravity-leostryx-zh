@@ -1,4 +1,4 @@
-/* Leostryx Plugin Host Bridge — Open interface for sidecar/frontend plugins */
+/* Antigravity Plugin Host Bridge — Open interface for sidecar/frontend plugins */
 (function() {
   "use strict";
   if (window.__agyPluginHostInstalled) return;

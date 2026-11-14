@@ -8,10 +8,15 @@
   if (window.__agyToolsReady) return;
   window.__agyToolsReady = true;
 
-  function ru() {
-    try { return window.__agyI18n ? window.__agyI18n.getLanguage() === "ru" : true; } catch (e) { return true; }
+  function lang() {
+    try { return window.__agyI18n ? window.__agyI18n.getLanguage() : "en"; } catch (e) { return "en"; }
   }
-  function T(r, e) { return ru() ? r : e; }
+  function T(r, e) {
+    var l = lang();
+    if (l === "ru") return r;
+    if (l === "zh" && window.__agyZhTranslate) return window.__agyZhTranslate(r) || window.__agyZhTranslate(e) || e;
+    return e;
+  }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} return null; }
 
@@ -852,8 +857,8 @@
     var note = document.createElement("div");
     note.className = "agy-t-note";
     note.textContent = T(
-      "Отметьте, что сохранить, и укажите путь. По умолчанию — папка «Leostryx Backup» на телефоне. Включает провайдеры, ключи MCP, настройки и историю чатов с фото.",
-      "Check what to save and set the path. Default folder: Leostryx Backup on the phone. Includes providers, MCP keys, settings and chat history with photos."
+      "Отметьте, что сохранить, и укажите путь. По умолчанию — папка «Antigravity Backup» на телефоне. Включает провайдеры, ключи MCP, настройки и историю чатов с фото.",
+      "Check what to save and set the path. Default folder: Antigravity Backup on the phone. Includes providers, MCP keys, settings and chat history with photos."
     );
     wrap.appendChild(note);
 
@@ -866,7 +871,7 @@
     pathRow.appendChild(pathLabel);
     var pathInput = document.createElement("input");
     pathInput.type = "text";
-    pathInput.value = "/storage/emulated/0/Leostryx Backup";
+    pathInput.value = "/storage/emulated/0/Antigravity Backup";
     pathInput.style.cssText = "flex:1;min-width:0;background:#101012;color:#eee;border:1px solid #555;border-radius:8px;padding:8px;font-size:12px";
     pathInput.setAttribute("data-backup-path", "");
     pathRow.appendChild(pathInput);
@@ -915,7 +920,7 @@
     var desc = document.createElement("div");
     desc.className = "agy-t-desc";
     desc.setAttribute("data-desc", "");
-    desc.textContent = T("Архив сохраняется в папку «Leostryx Backup» на телефоне.", "Archive is saved to the Leostryx Backup folder on the phone.");
+    desc.textContent = T("Архив сохраняется в папку «Antigravity Backup» на телефоне.", "Archive is saved to the Antigravity Backup folder on the phone.");
     main.appendChild(desc);
 
     card.appendChild(main);
@@ -998,7 +1003,7 @@
       if (!lsId || /^ERR/.test(lsId)) { alert(String(lsId)); return; }
       pollStandalone(lsId, function (r) {
         var lines = (r.log || "").split("\n").filter(function (l) { return l.trim() && l.indexOf(".zip") >= 0; });
-        if (!lines.length) { alert(T("Нет файлов бэкапа в папке Leostryx Backup.", "No backup files found.")); return; }
+        if (!lines.length) { alert(T("Нет файлов бэкапа в папке Antigravity Backup.", "No backup files found.")); return; }
         var overlay = document.createElement("div");
         overlay.style.cssText = "position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px";
         var box = document.createElement("div");
@@ -1169,10 +1174,10 @@
     var appInfo = document.createElement("div");
     var appName = document.createElement("div");
     appName.style.cssText = "font-size:17px;font-weight:600;color:var(--foreground,#eee)";
-    appName.textContent = "Leostryx";
+    appName.textContent = "Antigravity";
     var appVer = document.createElement("div");
     appVer.style.cssText = "font-size:12px;color:#888;margin-top:2px";
-    appVer.textContent = "3.1.0";
+    appVer.textContent = "3.2.1";
     appInfo.appendChild(appName);
     appInfo.appendChild(appVer);
     appRow.appendChild(appInfo);
@@ -1284,7 +1289,7 @@
     btnUpd.textContent = T("Проверить обновления", "Check for updates");
     c3.appendChild(btnUpd);
 
-    var CURRENT_VERSION = "3.1.0";
+    var CURRENT_VERSION = "3.2.1";
     var downloadedApkPath = "/storage/emulated/0/Download/update-temp.apk";
     var pendingApkUrl = null;
     var updState = "check"; // "check" | "available" | "downloading" | "ready"
@@ -1549,7 +1554,7 @@
         return;
       }
       var catName = categories.filter(function(c) { return c.id === selectedCat; })[0];
-      var subject = "[Leostryx] " + (catName ? catName.label : "");
+      var subject = "[Antigravity] " + (catName ? catName.label : "");
       var body = text;
       if (emailInput.value.trim()) {
         body += "\n\n---\n" + T("Ответить на: ", "Reply to: ") + emailInput.value.trim();

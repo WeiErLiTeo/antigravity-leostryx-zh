@@ -10,11 +10,16 @@
   if (window.__agyCustomizationsReady) return;
   window.__agyCustomizationsReady = true;
 
-  function ru() {
-    try { return window.__agyI18n ? window.__agyI18n.getLanguage() === "ru" : true; }
-    catch (e) { return true; }
+  function lang() {
+    try { return window.__agyI18n ? window.__agyI18n.getLanguage() : "en"; }
+    catch (e) { return "en"; }
   }
-  function T(r, e) { return ru() ? r : e; }
+  function T(r, e) {
+    var l = lang();
+    if (l === "ru") return r;
+    if (l === "zh" && window.__agyZhTranslate) return window.__agyZhTranslate(r) || window.__agyZhTranslate(e) || e;
+    return e;
+  }
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];

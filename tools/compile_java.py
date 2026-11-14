@@ -12,7 +12,7 @@ ANDROID_JAR = Path("/opt/android/sdk/platforms/android-36/android.jar")
 D8_BIN = Path("/opt/android/sdk/build-tools/36.0.0/d8")
 
 
-def _strip_classes_from_dex(dex_bytes: bytes, descriptors_to_strip: set) -> bytes:
+def _strip_classes_from_dex(dex_bytes: bytes, descriptors_to_strip: set, outer_prefixes: set) -> bytes:
     dex = bytearray(dex_bytes)
     map_off = struct.unpack_from("<I", dex, 52)[0]
     class_defs_size, class_defs_off = struct.unpack_from("<II", dex, 96)
@@ -32,12 +32,20 @@ def _strip_classes_from_dex(dex_bytes: bytes, descriptors_to_strip: set) -> byte
         str_idx = struct.unpack_from("<I", dex, type_ids_off + type_idx * 4)[0]
         return get_string(str_idx)
 
+    def should_strip(desc: str) -> bool:
+        if desc in descriptors_to_strip:
+            return True
+        for pref in outer_prefixes:
+            if desc.startswith(pref):
+                return True
+        return False
+
     kept = bytearray()
     removed = 0
     for i in range(class_defs_size):
         off = class_defs_off + i * 32
         class_idx = struct.unpack_from("<I", dex, off)[0]
-        if get_type_desc(class_idx) in descriptors_to_strip:
+        if should_strip(get_type_desc(class_idx)):
             removed += 1
         else:
             kept.extend(dex[off : off + 32])
@@ -75,29 +83,55 @@ def build(root: Path) -> None:
     if not dex_path.exists():
         return
 
+    stubs_dir = root / "src_stubs"
+    stub_files = sorted(stubs_dir.rglob("*.java")) if stubs_dir.is_dir() else []
+
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
+        cp_entries = [str(ANDROID_JAR)]
+
+        if stub_files:
+            stubs_out = tmp_path / "stubs"
+            stubs_out.mkdir(parents=True, exist_ok=True)
+            subprocess.check_call([
+                javac_bin,
+                "-encoding", "UTF-8",
+                "-source", "8",
+                "-target", "8",
+                "-Xlint:-options",
+                "-cp", str(ANDROID_JAR),
+                "-d", str(stubs_out),
+                *[str(p) for p in stub_files],
+            ])
+            cp_entries.append(str(stubs_out))
+
         classes_out = tmp_path / "classes"
         classes_out.mkdir(parents=True, exist_ok=True)
 
         subprocess.check_call([
             javac_bin,
+            "-encoding", "UTF-8",
             "-source", "8",
             "-target", "8",
             "-Xlint:-options",
-            "-cp", str(ANDROID_JAR),
+            "-cp", ":".join(cp_entries),
             "-d", str(classes_out),
             *[str(p) for p in java_files],
         ])
 
         compiled_classes = sorted(classes_out.rglob("*.class"))
         descriptors = set()
+        outer_prefixes = set()
         for cls_file in compiled_classes:
             rel = cls_file.relative_to(classes_out).with_suffix("").as_posix()
             descriptors.add(f"L{rel};")
+            if "$" not in rel:
+                outer_prefixes.add(f"L{rel}$")
 
         stripped_dex = tmp_path / "stripped.dex"
-        stripped_dex.write_bytes(_strip_classes_from_dex(dex_path.read_bytes(), descriptors))
+        stripped_dex.write_bytes(
+            _strip_classes_from_dex(dex_path.read_bytes(), descriptors, outer_prefixes)
+        )
 
         d8_out = tmp_path / "d8_out"
         d8_out.mkdir(parents=True, exist_ok=True)

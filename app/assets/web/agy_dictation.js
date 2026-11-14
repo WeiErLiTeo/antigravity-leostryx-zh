@@ -14,8 +14,9 @@
 
   function T(ru, en) {
     var l;
-    try { l = (document.documentElement.getAttribute("data-agy-language") || "ru").toLowerCase(); } catch (e) { l = "ru"; }
-    return l.indexOf("en") === 0 ? en : ru;
+    try { l = (window.__agyI18n ? window.__agyI18n.getLanguage() : (document.documentElement.getAttribute("data-agy-language") || "en")).toLowerCase(); } catch (e) { l = "en"; }
+    if (l.indexOf("zh") === 0 && window.__agyZhTranslate) return window.__agyZhTranslate(ru) || window.__agyZhTranslate(en) || en;
+    return l.indexOf("ru") === 0 ? ru : en;
   }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
 
@@ -63,6 +64,7 @@
     // Language
     h += '<div class="agy-dc-group"><div class="agy-dc-gtitle">' + esc(T("Язык", "Language")) + "</div>";
     h += radioRow("lang", "auto", c.lang, T("По языку интерфейса", "Follow interface language"), "");
+    h += radioRow("lang", "zh", c.lang, T("简体中文", "Chinese"), "");
     h += radioRow("lang", "ru", c.lang, T("Русский", "Russian"), "");
     h += radioRow("lang", "en", c.lang, T("Английский", "English"), "");
     h += "</div>";

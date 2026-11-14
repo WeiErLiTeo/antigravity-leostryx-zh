@@ -59,8 +59,8 @@ try {
  * CONFIG so later fragments see the resolved values.
  */
 var appConfig = {
-  productName: 'Leostryx',
-  appName: 'Leostryx',
+  productName: 'Antigravity',
+  appName: 'Antigravity',
   appVersion: VERSION,
   version: VERSION,
   isStandalone: true,

@@ -11,11 +11,16 @@
   var BOX = "[data-testid='agent-input-box']";
   var SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>';
 
-  function ru() {
-    try { return window.__agyI18n ? window.__agyI18n.getLanguage() === "ru" : document.documentElement.getAttribute("data-agy-language") === "ru"; }
-    catch (e) { return true; }
+  function lang() {
+    try { return window.__agyI18n ? window.__agyI18n.getLanguage() : (document.documentElement.getAttribute("data-agy-language") || "en"); }
+    catch (e) { return "en"; }
   }
-  function T(r, e) { return ru() ? r : e; }
+  function T(r, e) {
+    var l = lang();
+    if (l === "ru") return r;
+    if (l === "zh" && window.__agyZhTranslate) return window.__agyZhTranslate(r) || window.__agyZhTranslate(e) || e;
+    return e;
+  }
   function tr(s) { try { return window.__agyI18n ? window.__agyI18n.translate(s) : s; } catch (e) { return s; } }
 
   function api() {
@@ -250,10 +255,13 @@
     var vw = window.innerWidth || document.documentElement.clientWidth;
     var w = Math.min(r.width, vw - 8);
     var left = Math.max(4, Math.min(r.left, vw - w - 4));
-    pop.style.width = Math.round(w) + "px";
-    pop.style.left = Math.round(left) + "px";
-    pop.style.bottom = Math.round(window.innerHeight - r.top + 6) + "px";
-    pop.style.maxHeight = Math.max(160, Math.round(r.top - 64)) + "px";
+    pop.style.setProperty("width", Math.round(w) + "px", "important");
+    pop.style.setProperty("max-width", Math.round(w) + "px", "important");
+    pop.style.setProperty("min-width", Math.round(w) + "px", "important");
+    pop.style.setProperty("left", Math.round(left) + "px", "important");
+    pop.style.setProperty("right", "auto", "important");
+    pop.style.setProperty("bottom", Math.round(window.innerHeight - r.top + 6) + "px", "important");
+    pop.style.setProperty("max-height", Math.max(160, Math.round(r.top - 64)) + "px", "important");
   }
 
   function open(btn) {
@@ -310,16 +318,55 @@
   }, true);
   window.addEventListener("resize", function () { place(); });
 
-  /* Button: first item of the right-hand group of the toolbar (next to mic). */
+  /* Button: immediately to the left of the mic button in the right-hand group of the toolbar. */
+  var PLUS_SEL = BOX + " button[aria-label='Add context'], " +
+    BOX + " button[aria-label='Add Context'], " +
+    BOX + " button[aria-label='Добавить контекст'], " +
+    BOX + " button[aria-label='添加上下文'], " +
+    BOX + " [data-testid='attach-button']";
+  var MIC_SEL = "button[aria-label='Record voice memo'], " +
+    "button[aria-label='Stop recording'], " +
+    "button[aria-label='Записать голосовое сообщение'], " +
+    "button[aria-label='Остановить запись'], " +
+    "button[aria-label='录制语音消息'], " +
+    "button[aria-label='停止录音']";
+
+  function placeButton(group, btn) {
+    var mic = group.querySelector(MIC_SEL);
+    if (mic && mic.parentNode === group) {
+      if (btn.parentNode !== group || btn.nextElementSibling !== mic) {
+        group.insertBefore(btn, mic);
+      }
+      return;
+    }
+    var sub = group.querySelector("#agy-subagent-btn");
+    if (sub && sub.parentNode === group) {
+      if (btn.parentNode !== group || sub.nextElementSibling !== btn) {
+        group.insertBefore(btn, sub.nextSibling);
+      }
+      return;
+    }
+    if (btn.parentNode !== group) {
+      group.insertBefore(btn, group.firstChild);
+    }
+  }
+
   function ensureButton() {
-    // Footer row of the input box: [+ / model …] [mic, send]. The right group
-    // is the last child of the "@container/input-footer" row.
-    var plus = document.querySelector(BOX + " button[aria-label='Add context'], " + BOX + " button[aria-label='Добавить контекст']");
-    var footer = plus && plus.closest("[class*='input-footer']");
+    // Footer row of the input box: [+ / model …] [subagent, shield, mic, send].
+    var box = document.querySelector(BOX);
+    if (!box) { if (pop) close(); return; }
+    var plus = document.querySelector(PLUS_SEL);
+    var footer = (plus && plus.closest("[class*='input-footer']")) || box.querySelector("[class*='input-footer']");
     if (!footer) { if (pop && !document.querySelector(BOX)) close(); return; }
     var group = footer.lastElementChild;
-    if (!group || group.contains(plus)) return;
-    if (group.querySelector(".agy-shield-btn")) return;
+    if (!group || (plus && group.contains(plus))) return;
+    var existing = group.querySelector(".agy-shield-btn");
+    if (existing) {
+      var curLabel = T("Безопасность", "Security");
+      if (existing.getAttribute("aria-label") !== curLabel) existing.setAttribute("aria-label", curLabel);
+      placeButton(group, existing);
+      return;
+    }
     var b = document.createElement("button");
     b.type = "button";
     b.className = "agy-shield-btn";
@@ -328,12 +375,14 @@
     b.innerHTML = SVG;
     b.addEventListener("pointerdown", function (e) { e.preventDefault(); });
     b.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); open(b); });
-    group.insertBefore(b, group.firstChild);
+    placeButton(group, b);
   }
   var raf = 0;
   function schedule() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; ensureButton(); if (pop) place(); }); }
   function start() {
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("agy-language-changed", schedule);
+    setInterval(ensureButton, 800);
     schedule();
   }
   if (document.body) start(); else document.addEventListener("DOMContentLoaded", start, { once: true });

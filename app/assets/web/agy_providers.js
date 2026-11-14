@@ -10,8 +10,13 @@
   if (window.__agyProvidersReady) return;
   window.__agyProvidersReady = true;
 
-  function ru() { try { return window.__agyI18n ? window.__agyI18n.getLanguage() === "ru" : true; } catch (e) { return true; } }
-  function T(r, e) { return ru() ? r : e; }
+  function lang() { try { return window.__agyI18n ? window.__agyI18n.getLanguage() : "en"; } catch (e) { return "en"; } }
+  function T(r, e) {
+    var l = lang();
+    if (l === "ru") return r;
+    if (l === "zh" && window.__agyZhTranslate) return window.__agyZhTranslate(r) || window.__agyZhTranslate(e) || e;
+    return e;
+  }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   // A capability toggle chip for a selected model (images / tools / reasoning).
   function capChip(kind, m, on, label, title) {
@@ -21,9 +26,9 @@
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
   var TYPES = [
-    { id: "openai", ru: "OpenAI-совместимый", en: "OpenAI-compatible", base: "https://api.openai.com/v1", hint: T("OpenAI, DeepSeek, Groq, xAI, Mistral, OpenRouter, локальные серверы.", "OpenAI, DeepSeek, Groq, xAI, Mistral, OpenRouter, local servers.") },
-    { id: "anthropic", ru: "Claude-совместимый (Anthropic)", en: "Claude-compatible (Anthropic)", base: "https://api.anthropic.com", hint: T("Anthropic и прокси с форматом Messages API.", "Anthropic and proxies speaking the Messages API.") },
-    { id: "gemini", ru: "Gemini-совместимый", en: "Gemini-compatible", base: "https://generativelanguage.googleapis.com/v1beta", hint: T("Google AI Studio и прокси с generateContent.", "Google AI Studio and generateContent proxies.") }
+    { id: "openai", ru: "OpenAI-совместимый", en: "OpenAI-compatible", base: "https://api.openai.com/v1", hru: "OpenAI, DeepSeek, Groq, xAI, Mistral, OpenRouter, локальные серверы.", hen: "OpenAI, DeepSeek, Groq, xAI, Mistral, OpenRouter, local servers." },
+    { id: "anthropic", ru: "Claude-совместимый (Anthropic)", en: "Claude-compatible (Anthropic)", base: "https://api.anthropic.com", hru: "Anthropic и прокси с форматом Messages API.", hen: "Anthropic and proxies speaking the Messages API." },
+    { id: "gemini", ru: "Gemini-совместимый", en: "Gemini-compatible", base: "https://generativelanguage.googleapis.com/v1beta", hru: "Google AI Studio и прокси с generateContent.", hen: "Google AI Studio and generateContent proxies." }
   ];
   function typeOf(id) { return TYPES.filter(function (t) { return t.id === id; })[0] || TYPES[0]; }
 
@@ -74,6 +79,8 @@
     if (!(cfg && cfg.useProviders && cfg.connections)) return out;
     cfg.connections.forEach(function (c) {
       var meta = c.modelMeta || {};
+      var pType = c.type || "openai";
+      var pName = c.name || (pType === "openai" ? "OpenAI-compatible" : pType === "anthropic" ? "Claude (Anthropic)" : "Gemini-compatible");
       (c.selected || []).forEach(function (m) {
         if (!m || seen[m]) return; seen[m] = 1;
         var md = effectiveInfo(c, m, meta[m]);
@@ -82,6 +89,9 @@
           // the exclusive AGY_LLM_GATEWAY to the provider, which expects the raw
           // model id (e.g. "mimo-v2.6-pro").
           label: m, modelName: m,
+          provider: pName,
+          providerName: pName,
+          providerType: pType,
           maxTokens: md.ctx && md.ctx > 0 ? md.ctx : 200000,
           images: md.images !== false, tools: md.tools !== false, thinking: md.thinking !== false,
           efforts: Array.isArray(md.efforts) && md.efforts.length ? md.efforts.slice() : null,
@@ -99,6 +109,24 @@
     // render once a provider is configured.
     if (s.length) __agySpecCache = s;
     return s;
+  };
+  window.__agyGetProviderName = function (label) {
+    if (!label) return "";
+    var specs = window.__agyProviderSpecs ? window.__agyProviderSpecs() : [];
+    for (var i = 0; i < specs.length; i++) {
+      if (specs[i].label === label) return specs[i].provider || specs[i].providerName || "";
+    }
+    var cfg = readPersisted();
+    if (cfg && cfg.connections) {
+      for (var ci = 0; ci < cfg.connections.length; ci++) {
+        var conn = cfg.connections[ci];
+        if (conn.selected && conn.selected.indexOf(label) >= 0) {
+          var t = conn.type || "openai";
+          return conn.name || (t === "openai" ? "OpenAI-compatible" : t === "anthropic" ? "Claude (Anthropic)" : "Gemini-compatible");
+        }
+      }
+    }
+    return "Custom";
   };
   // The core's gateway discovery returns the same provider models as native
   // options. Suppress exact duplicates only in this selector; keep all other
@@ -409,7 +437,7 @@
           '<span>' + esc(T(ty.ru, ty.en)) + '</span><span class="agy-pv-ddcar">▾</span></button>' +
         (typeOpen ? '<div class="agy-pv-ddlist">' + opts + "</div>" : "") +
       "</div></label>" +
-      '<div class="agy-pv-hint">' + esc(ty.hint) + "</div>" +
+      '<div class="agy-pv-hint">' + esc(T(ty.hru, ty.hen)) + "</div>" +
       '<label class="agy-pv-field"><span>' + esc(T("Название", "Name")) + '</span><input data-f="name" value="' + esc(c.name || "") + '" placeholder="' + esc(T("Например, Мой Claude", "e.g. My Claude")) + '"></label>' +
       '<label class="agy-pv-field"><span>Base URL</span><input data-f="baseUrl" value="' + esc(c.baseUrl || "") + '" placeholder="' + esc(ty.base) + '" autocapitalize="off" autocorrect="off" spellcheck="false"></label>' +
       '<label class="agy-pv-field"><span>' + esc(T("API-ключ", "API key")) + '</span><input data-f="apiKey" type="password" value="' + esc(c.apiKey || "") + '" placeholder="sk-…" autocapitalize="off" autocorrect="off" spellcheck="false"></label>' +
@@ -595,7 +623,7 @@
     el.appendChild(root);
     load();
     editing = null; fetchMsg = "";
-    syncModels();
+    setTimeout(function () { syncModels(); }, 0);
     render();
   };
 })();

@@ -513,6 +513,15 @@ op_sdk() {
     fi
     write_env
     . "$ENVF"
+    local cacerts="$PREFIX/etc/tls/certs/java/cacerts"
+    [ -f "$cacerts" ] || cacerts="$PREFIX/lib/jvm/java-17-openjdk/lib/security/cacerts"
+    [ -f "$cacerts" ] || cacerts="$PREFIX/lib/jvm/java-21-openjdk/lib/security/cacerts"
+    if [ -f "$cacerts" ]; then
+        case "${JAVA_TOOL_OPTIONS:-}" in
+            *trustStore=*) : ;;
+            *) export JAVA_TOOL_OPTIONS="-Djavax.net.ssl.trustStore=$cacerts${JAVA_TOOL_OPTIONS:+ $JAVA_TOOL_OPTIONS}" ;;
+        esac
+    fi
     local comps="${ARG:-platforms;android-35 build-tools;35.0.0}"
     # API 37.x lives in the canary channel (channel 3); add --channel=3 automatically
     local channel_flag=""
@@ -1891,7 +1900,7 @@ PRESET_AGENTS = {
         "desc": "Диагностика крашей Android, анализ logcat/stacktrace, проверка манифестов, Gradle, JNI и декомпиляция через jadx-agy/apktool.",
         "body": """# Роль: Инженер отладки Android (Android Debugger)
 
-Ты — специализированный субагент по отладке Android-приложений, нативных библиотек (JNI/NDK) и сборке APK в среде Leostryx (ARM64).
+Ты — специализированный субагент по отладке Android-приложений, нативных библиотек (JNI/NDK) и сборке APK в среде Antigravity (ARM64).
 
 ## Правила и инструменты:
 1. При анализе APK всегда используй `jadx-agy -j 2 --no-res` (вместо обычного `jadx`) и `apktool`.
@@ -2620,7 +2629,7 @@ print("cleared", n)
 PYCLR
 }
 
-# AGY-BRAND: swap the login-screen logo for the chosen Leostryx pack.
+# AGY-BRAND: swap the login-screen logo for the chosen Antigravity pack.
 # Web-side assets live under $HOME/web/brand/<pack>/. The APK-bound resources
 # (splash drawable, mipmap launcher icon, app label) are recorded in
 # $HOME/web/brand/config.json for rebuild.py to pick up on the next build.
@@ -2659,7 +2668,7 @@ import json, os, pathlib
 web = pathlib.Path(os.environ["AGY_BRAND_WEB"])
 pack = os.environ["AGY_BRAND_PACK"]
 colour = os.environ.get("AGY_BRAND_COLOUR", "").strip()
-cfg = {"pack": pack, "name": "Leostryx"}
+cfg = {"pack": pack, "name": "Antigravity"}
 try:
     old = json.loads((web / "brand" / "config.json").read_text(encoding="utf-8"))
     if isinstance(old, dict):
@@ -2667,7 +2676,7 @@ try:
 except Exception:
     pass
 cfg["pack"] = pack
-cfg["name"] = "Leostryx"
+cfg["name"] = "Antigravity"
 if colour:
     cfg["color"] = colour
 (web / "brand" / "config.json").write_text(
@@ -2676,7 +2685,7 @@ print("brand: recorded pack=%s color=%s" % (pack, cfg.get("color", "-")))
 PYBR
     local alias_name=""
     case "$pack" in
-        00_original)  alias_name="LauncherDarkActivity" ;;
+        00_original)  alias_name="LauncherOriginal" ;;
         01_owl)       alias_name="LauncherOwl" ;;
         02_lynx)      alias_name="LauncherLynx" ;;
         03_lsx)       alias_name="LauncherLsx" ;;
@@ -2685,7 +2694,7 @@ PYBR
 
     if [ -n "$alias_name" ]; then
         step "Switching launcher icon to $alias_name"
-        local all_aliases="LauncherDarkActivity LauncherOwl LauncherLynx LauncherLsx LauncherAngularX"
+        local all_aliases="LauncherOriginal LauncherOwl LauncherLynx LauncherLsx LauncherAngularX"
         for al in $all_aliases; do
             if [ "$al" = "$alias_name" ]; then
                 pm enable "com.agyru.t2/com.agy.ui.launcher.$al" 2>/dev/null || true
@@ -2717,7 +2726,7 @@ items = set(x.strip() for x in items_str.split(",") if x.strip())
 if not items:
     items = {"providers", "mcp", "settings", "chats", "attachments"}
 ext = "/storage/emulated/0"
-default_dir = os.path.join(ext, "Leostryx Backup") if os.path.isdir(ext) and os.access(ext, os.W_OK) else os.path.join(home, "agy-backup")
+default_dir = os.path.join(ext, "Antigravity Backup") if os.path.isdir(ext) and os.access(ext, os.W_OK) else os.path.join(home, "agy-backup")
 outdir = custom.strip() if custom.strip() else default_dir
 os.makedirs(outdir, exist_ok=True)
 outpath = os.path.join(outdir, f"agy-backup-{ts}.zip")
@@ -2793,7 +2802,7 @@ manifest = {
     "created": ts,
     "files": count,
     "items": sorted(items),
-    "app_version": "3.0.6",
+    "app_version": "3.2.1",
 }
 z.writestr("manifest.json", json.dumps(manifest, indent=2))
 z.close()
@@ -2929,7 +2938,7 @@ ctx = ssl._create_unverified_context()
 try:
     req = urllib.request.Request(
         "https://api.github.com/repos/Leostrange/Leostryx/releases/latest",
-        headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "Leostryx-App"}
+        headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "Antigravity-App"}
     )
     data = json.loads(urllib.request.urlopen(req, timeout=10, context=ctx).read())
     tag = (data.get("tag_name", "") or "-").strip().replace(" ", "_")
@@ -3009,7 +3018,72 @@ except Exception as e:
 PYUD
 }
 
+# ------------------------------------------------------------ power / doze
+# Background sessions die when the OS suspends the app's network. On MIUI/HyperOS
+# `mDozeAfterScreenOff=true`, so Doze (and its network block) starts the moment
+# the screen turns off. Three independent gates decide whether the app may keep
+# running; all three are set here, idempotently:
+#   1. Doze / battery-optimisation whitelist   (`deviceidle whitelist`)
+#   2. App-standby bucket                        (`am set-standby-bucket exempted`)
+#   3. Background app-ops                        (`RUN_ANY_IN_BACKGROUND allow`)
+# With Shizuku present this needs no user prompt. Without it we report `unknown`
+# (never `no`) so the UI does not raise a false "battery optimisation is ON".
+op_power() {
+    local pkg="${AGY_APPLICATION_ID:-com.agyru.t2}"
+    local rish_bin="" cand="" out="" state="unknown" bucket="" doze=""
+
+    for cand in "$(command -v rish 2>/dev/null || true)" \
+                "${PREFIX:-}/bin/rish" \
+                "${HOME:-}/usr/bin/rish"; do
+        if [ -n "$cand" ] && [ -x "$cand" ]; then rish_bin="$cand"; break; fi
+    done
+
+    if [ -z "$rish_bin" ]; then
+        say "@@power pkg=$pkg whitelisted=unknown reason=no-rish"
+        say "@@done"
+        return 0
+    fi
+
+    # 1) Doze / battery-optimisation whitelist. Match the package name as a
+    # substring — the whitelist prints lines like "user,$pkg,10586".
+    out="$(timeout 12 "$rish_bin" -c "dumpsys deviceidle whitelist" 2>/dev/null | tr -d '\r')"
+    case "$out" in
+        *"$pkg"*) state="yes" ;;
+        "")       state="unknown" ;;
+        *)        state="no" ;;
+    esac
+    if [ "$state" = "no" ]; then
+        timeout 12 "$rish_bin" -c "cmd deviceidle whitelist +$pkg" >/dev/null 2>&1
+        out="$(timeout 12 "$rish_bin" -c "dumpsys deviceidle whitelist" 2>/dev/null | tr -d '\r')"
+        case "$out" in
+            *"$pkg"*) state="yes" ;;
+            "")       state="unknown" ;;
+            *)        state="no" ;;
+        esac
+    fi
+
+    # 2) App-standby bucket: 5 == EXEMPTED.
+    bucket="$(timeout 8 "$rish_bin" -c "am get-standby-bucket $pkg" 2>/dev/null | tr -dc '0-9' | head -c 3)"
+    if [ -n "$bucket" ] && [ "$bucket" != "5" ]; then
+        timeout 8 "$rish_bin" -c "am set-standby-bucket $pkg exempted" >/dev/null 2>&1
+        bucket="$(timeout 8 "$rish_bin" -c "am get-standby-bucket $pkg" 2>/dev/null | tr -dc '0-9' | head -c 3)"
+    fi
+
+    # 3) Background app-ops (best effort; some builds reject the second name).
+    timeout 8 "$rish_bin" -c "cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow" >/dev/null 2>&1
+    timeout 8 "$rish_bin" -c "cmd appops set $pkg RUN_IN_BACKGROUND allow" >/dev/null 2>&1
+
+    doze="$(timeout 8 "$rish_bin" -c "dumpsys power" 2>/dev/null \
+        | grep -m1 mDozeAfterScreenOff \
+        | sed -n 's/.*\(mDozeAfterScreenOff=[A-Za-z0-9]*\).*/\1/p' | head -1)"
+
+    say "@@power pkg=$pkg whitelisted=$state bucket=${bucket:-unknown}"
+    [ -n "$doze" ] && say "@@power doze=$doze"
+    say "@@done"
+}
+
 case "$OP" in
+    power)          op_power ;;      # AGY-POWER
     termopen)       op_termopen ;;
     terminput)      op_terminput ;;
     termkill)       op_termkill ;;  # AGY-P2-15

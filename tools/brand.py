@@ -1,9 +1,7 @@
-import hashlib
-import zlib
-"""brand.py — apply Leostryx branding (icon pack + display name) to the APK tree.
+"""brand.py — apply Antigravity branding (icon pack + display name) to the APK tree.
 
 Driven by `app/assets/web/brand/config.json`:
-    { "pack": "02_lynx", "name": "Leostryx", "color": "#0b84ff" }
+    { "pack": "02_lynx", "name": "Antigravity", "color": "#0b84ff" }
 
 Three layers are touched, each with a different safety constraint:
 
@@ -49,7 +47,7 @@ for _d in ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"):
     RES_MAP.append(("res/mipmap-%s-v4/ic_launcher_round.png" % _d,
                     "source_res/mipmap-%s/ic_launcher_round.png" % _d))
 
-ARSC_OLD_LABEL = "Antigravity RU BP"
+ARSC_OLD_LABEL = "Antigravity"
 
 # dex strings that carry the app name. Longest first so a short entry can never
 # shadow a longer one at the same position.
@@ -77,7 +75,7 @@ def load_brand(root):
     pack = data.get("pack")
     if pack not in PACK_IDS:
         return None
-    name = data.get("name") or "Leostryx"
+    name = data.get("name") or "Antigravity"
     return {"pack": pack, "name": str(name), "color": data.get("color") or "#0b84ff"}
 
 
@@ -219,9 +217,6 @@ def patch_dex(data, replacements):
                 buf[i:i + len(ob)] = nb
                 done += 1
             start = i + 1
-    if done:
-        buf[12:32] = hashlib.sha1(buf[32:]).digest()
-        buf[8:12] = struct.pack('<I', zlib.adler32(buf[12:]) & 0xffffffff)
     return bytes(buf), done
 
 
@@ -248,8 +243,6 @@ def build_overlay(root, cfg, workdir):
 
     overlay = {}
     for dst, src in RES_MAP:
-        if cfg["pack"] != "00_original" and ("ic_launcher" in dst):
-            continue
         src_path = pack_dir / src
         if not src_path.exists():
             raise SystemExit("brand: missing %s (needed for %s)" % (src_path, dst))

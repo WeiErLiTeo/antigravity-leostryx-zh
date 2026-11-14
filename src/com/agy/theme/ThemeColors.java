@@ -1,6 +1,6 @@
 package com.agy.theme;
 
-/** Resolved colors and mode names. Mutable COLOR_DARK / COLOR_LIGHT for dynamic Web UI sync. */
+/** Resolved colors, mode constants, and live per-bar immersion state synced from WebView. */
 public final class ThemeColors {
 
     public static final int MODE_SYSTEM = 0;
@@ -9,6 +9,12 @@ public final class ThemeColors {
 
     public static int COLOR_DARK = 0xFF101010;
     public static int COLOR_LIGHT = 0xFFFFFFFF;
+
+    public static volatile boolean HAS_CUSTOM_BARS = false;
+    public static volatile int CUSTOM_STATUS_COLOR = 0xFF101010;
+    public static volatile int CUSTOM_NAV_COLOR = 0xFF101010;
+    public static volatile boolean CUSTOM_STATUS_DARK = true;
+    public static volatile boolean CUSTOM_NAV_DARK = true;
 
     public static final String THEME_DARK = "dark";
     public static final String THEME_LIGHT = "light";

@@ -47,8 +47,8 @@ function installGpu(doc) {
       // Promote ONLY the real scroll containers. Never inline <code>/<pre>:
       // per-element layers explode on Mali and saturate RenderThread.
       gpu.textContent =
-        '[data-testid="chat-container"], .scrollable, [role="dialog"], [data-radix-popper-content-wrapper], [data-state="open"], .overflow-y-auto, .overflow-auto, [data-testid="bottom-sheet"], [data-testid="settings-dialog"], .settings-modal {' +
-        ' -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior-y: contain; }' +
+        '[data-testid="chat-container"], .scrollable {' +
+        ' -webkit-overflow-scrolling: touch; }' +
         '.artifact-viewer {' +
         ' contain: layout style; }' +
         '*{ -webkit-tap-highlight-color: transparent; }';
@@ -83,10 +83,15 @@ try {
     send: function(opts) {
       try {
         if (!opts) return Promise.resolve();
+        // Never disturb the user while the app is open in the foreground
+        if (typeof document !== "undefined" && !document.hidden) return Promise.resolve();
         var cascadeId = (opts.payload && opts.payload.cascadeId) || opts.id || "";
-        var title = opts.title || "Leostryx";
+        var title = opts.title || "Antigravity";
         var body = opts.body || "";
-        var needsAction = (opts.payload && (opts.payload.type === "request_action" || opts.payload.needsAction)) || true;
+        var id = String(opts.id || "");
+        var isFinished = id.indexOf("agent-finished-") === 0;
+        var needsAction = !isFinished && !!opts.payload &&
+          (opts.payload.needsAction === true || opts.payload.type === "request_action");
         if (window.AgyShade && typeof window.AgyShade.notify === "function") {
           window.AgyShade.notify(cascadeId, title, body, !!needsAction);
         }

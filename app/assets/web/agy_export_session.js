@@ -21,6 +21,14 @@
   if (window.__agyExportSession) return;
 
   var MAX_BLOB = 64 * 1024 * 1024;
+  function lang() {
+    try { return (window.__agyI18n && window.__agyI18n.getLanguage()) || document.documentElement.getAttribute("data-agy-language") || "en"; }
+    catch (e) { return "en"; }
+  }
+  function T(zh, ru, en) {
+    var l = lang();
+    return l === "zh" ? zh : (l === "ru" ? ru : en);
+  }
 
   function toast(msg) {
     try {
@@ -97,12 +105,12 @@
 
   /* Best-effort transcript.md from transcript_full.jsonl lines. */
   function transcriptMd(lines, sourceName) {
-    var md = ["# Сессия Leostryx", "", "Источник: " + sourceName, ""];
+    var md = [T("# Antigravity 会话记录", "# Сессия Antigravity", "# Antigravity Session"), "", T("来源: ", "Источник: ", "Source: ") + sourceName, ""];
     var filePaths = [], mediaUris = [];
     lines.forEach(function (line, idx) {
       if (!line.trim()) return;
       var rec;
-      try { rec = JSON.parse(line); } catch (e) { md.push("## Запись " + (idx + 1), "", "```", line, "```", ""); return; }
+      try { rec = JSON.parse(line); } catch (e) { md.push("## " + T("记录 ", "Запись ", "Entry ") + (idx + 1), "", "```", line, "```", ""); return; }
       var s = JSON.stringify(rec);
       // File paths mentioned in tool calls (for MANIFEST, not invented content).
       var pathMatch = s.match(/"[^"]*\.(?:py|js|ts|tsx|java|kt|go|rs|md|txt|json|xml|html|css|png|jpg)[^"]*"/g);
@@ -125,7 +133,7 @@
 
   window.__agyExportTest = { buildZip: buildZip, crc32: crc32, transcriptMd: transcriptMd };
   window.__agyExportSession = function (cascadeId) {
-    if (!cascadeId) { toast("Нет открытой сессии для сохранения."); return Promise.resolve(); }
+    if (!cascadeId) { toast(T("当前没有可导出的打开会话。", "Нет открытой сессии для сохранения.", "No open session to save.")); return Promise.resolve(); }
     return (async function () {
       var errors = [];
       var transcriptText = "", sourceName = "", parsed = null;
@@ -148,7 +156,7 @@
         files.push({ name: "transcript.md", data: textToBytes(parsed.md) });
         files.push({ name: "transcript_full.jsonl", data: textToBytes(transcriptText) });
       } else {
-        errors.push("Транскрипт не получен: проверьте, что сессия сохранена на устройстве.");
+        errors.push(T("未能获取对话正文：请确认会话已保存在本地设备。", "Транскрипт не получен: проверьте, что сессия сохранена на устройстве.", "Transcript unavailable: verify that the session is saved on device."));
       }
       // Attachments (best effort, failures recorded, never fatal).
       for (var j = 0; j < mediaUris.length; j++) {
@@ -183,7 +191,7 @@
 
       var total = 0; files.forEach(function (f) { total += f.data.length + f.name.length + 100; });
       if (total > MAX_BLOB) {
-        toast("Сессия слишком большая (>" + Math.round(total / 1048576) + " МиБ): экспорт через blob ограничен 64 МиБ. Сохранение >64 МиБ в этой версии не реализовано.");
+        toast(T("会话过大 (>" + Math.round(total / 1048576) + " MiB)：通过 Blob 导出上限为 64 MiB。", "Сессия слишком большая (>" + Math.round(total / 1048576) + " МиБ): экспорт через blob ограничен 64 МиБ. Сохранение >64 МиБ в этой версии не реализовано.", "Session too large (>" + Math.round(total / 1048576) + " MiB): blob export limit is 64 MiB."));
         return;
       }
       var zip = buildZip(files);
@@ -203,7 +211,7 @@
         a.href = url; a.download = fname;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-        toast(transcriptText ? "Сессия сохранена в ZIP." : "ZIP сохранён, но транскрипт получить не удалось — см. MANIFEST.txt.");
+        toast(transcriptText ? T("会话已打包保存为 ZIP。", "Сессия сохранена в ZIP.", "Session saved to ZIP.") : T("ZIP 已保存，但未能获取对话正文，详见 MANIFEST.txt。", "ZIP сохранён, но транскрипт получить не удалось — см. MANIFEST.txt.", "ZIP saved, but transcript failed — see MANIFEST.txt."));
       }
       var agyA = (window.AndroidBridge && window.AndroidBridge.saveBlob) ? window.AndroidBridge : (window.Android && window.Android.saveBlob ? window.Android : null);
       var agyTok = window.__AG_NATIVE_BRIDGE_TOKEN__ || (function () { try { return localStorage.getItem("agy_bridge_token"); } catch (e) { return null; } })();
@@ -211,10 +219,10 @@
         agyB64(blob, function (b64) {
           try {
             agyA.saveBlob(agyTok, b64, fname, "application/zip");
-            toast("Сессия сохранена: " + fname + " (папка Загрузки).");
+            toast(T("会话已保存：" + fname + "（下载文件夹）。", "Сессия сохранена: " + fname + " (папка Загрузки).", "Session saved: " + fname + " (Downloads folder)."));
           } catch (e) { agyAnchor(); }
         }, agyAnchor);
       } else { agyAnchor(); }
-    })().catch(function (e) { console.error("[agyExportSession]", e); toast("Не удалось сохранить сессию: " + e); });
+    })().catch(function (e) { console.error("[agyExportSession]", e); toast(T("保存会话失败：", "Не удалось сохранить сессию: ", "Failed to save session: ") + e); });
   };
 })();

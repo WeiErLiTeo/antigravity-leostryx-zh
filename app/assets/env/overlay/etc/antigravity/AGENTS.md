@@ -6,13 +6,6 @@
 
 ---
 
-## 0. User Language & Thinking Process Language (Highest Priority)
-
-- **Default Language:** Always communicate with the user in **Simplified Chinese (`简体中文`)** by default, including reasoning summaries, explanations, status updates, and comments, unless the user explicitly asks for another language.
-- **Internal Thinking & Reasoning (`Thinking` / `Thought Process`):** You **MUST** write all internal thinking steps, chain-of-thought reasoning, initial hypotheses (`初步分析` instead of `Initial hypothesis`), UI/code planning, and step-by-step analysis in **Simplified Chinese (`简体中文`)**. Never output English paragraphs inside your thinking/reasoning blocks.
-
----
-
 ## 1. Platform & Environment Identity
 
 - **Platform:** Native Android (Linux kernel 6.1+, ARM64 / `aarch64` architecture, **ARMv8.0-A+ baseline** with ARMv8.0 LSE emulation and native ARMv8.1-A+ LSE atomics).
@@ -194,3 +187,10 @@ Termux-built components hardcode `/data/data/com.termux/...` paths or ship glibc
 - **`jadx-agy`** — use INSTEAD of plain `jadx` when decompiling: injects `-Duser.home` / `-Djava.io.tmpdir` (the Termux-JDK defaults are inaccessible from this sandbox) and `-Xmx1500m` so large APKs are not OOM-killed (exit 137). Recommended flags: `-j 2 --no-res`; note `--single-class-thread` does not exist in jadx 1.5.x. Harmless `res/*.9.png` decode warnings from obfuscated APKs do not affect smali/manifest.
 - Every other Java tool (apktool, d8, apksigner, jadx-gui, Gradle client/daemon) receives the same sandbox paths automatically through `$PREFIX/etc/profile.d/65-agy-jvm.sh` (`JAVA_TOOL_OPTIONS`); `agy-fix-paths` re-creates that file if missing.
 - Full reference documents: `docs/flutter-toolchain.md` and `docs/jadx-fixes.md` in the repository.
+
+---
+
+## 9. Language & Communication
+
+- Respond in the user's active language (e.g., **简体中文** when the user writes in Chinese, Русский when in Russian, English otherwise).
+

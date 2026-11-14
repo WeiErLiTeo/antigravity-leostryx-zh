@@ -26,7 +26,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "tools"))
 import brand  # noqa: E402  (Leostryx icon pack + display name overlay)
-import compile_java  # noqa: E402  (Incremental Java -> classes.dex compiler)
 APP = ROOT / "app"
 MAP = json.loads((ROOT / "compress-map.json").read_text(encoding="utf-8"))
 BYPASS = {
@@ -165,8 +164,6 @@ def main():
     # Leostryx branding: icon pack + display name, driven by
     # app/assets/web/brand/config.json. Sits on top of the variant delta so a
     # bypass build is branded the same way as standard.
-    compile_java.build(ROOT)
-
     brand_cfg = brand.load_brand(ROOT)
     if brand_cfg:
         print("brand: pack=%s name=%s color=%s"

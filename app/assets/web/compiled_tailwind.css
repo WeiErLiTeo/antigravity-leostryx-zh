@@ -8760,7 +8760,7 @@ body .no-focus-ring:focus, body .no-focus-ring:focus-visible {
   transition-duration: calc(var(--drawer-swipe-strength, 1) * 500ms);
 }
 .aux-drawer-popup[data-starting-style], .aux-drawer-popup[data-ending-style], .aux-drawer-popup[data-swiping] {
-  will-change: auto;
+  will-change: transform;
 }
 @media (prefers-reduced-motion: reduce) {
   .aux-drawer-backdrop, .aux-drawer-popup {
